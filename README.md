@@ -1,38 +1,186 @@
-# Dependent-censoring-detection
+# Dependent-Censoring-Detection
 
-Sample code:
+A Python implementation for detecting **dependent censoring** in right-censored survival data using a stratified permutation-based global test.
 
+This repository provides:
 
-import pandas as pd
+- ✅ Synthetic survival data generator  
+- ✅ Dependent censoring detection function  
+- ✅ Global p-value output  
+- ✅ Automatic covariate stratification  
+- ✅ CSV-ready workflow  
 
-from dependent_censoring _detection_function import get_final_p_value_for_dataset
+---
 
-df = pd.read_csv("your_data.csv")
+## Installation
 
-p_value = get_final_p_value_for_dataset(
-    dataset=df,
-    
-    quantiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1], 
-    
-    B=100,  # Number of permutations
-    
-    seed=123,
-    
-    min_stratum_size=30,
-    
-    variance_threshold=0.001,  
-)
+Python ≥ 3.8 is recommended.
 
-print("Final p-value:", p_value)
+Install dependencies:
 
+```bash
+pip install numpy pandas scipy scikit-learn scikit-survival
+```
 
+---
 
-Interpretation (common rule):
-
-p < 0.05: evidence against conditional independence (dependent censoring)
-p >= 0.05: no strong evidence against the independence assumption
-
+# Required Dataset Format
 
 Your dataset must contain:
-observed_time (positive),
-event_indicator (0/1), and all other columns are treated as covariates automatically
+
+- `observed_time` → positive survival/censoring time  
+- `event_indicator` → 0 (censored) or 1 (event)  
+- All other columns are automatically treated as covariates (strata variables)
+
+Example structure:
+
+| x0 | x1 | x2 | observed_time | event_indicator |
+|----|----|----|---------------|-----------------|
+| 0  | 1  | 0  | 12.5          | 1               |
+| 1  | 0  | 1  | 7.3           | 0               |
+
+---
+
+# Usage
+
+## 1️⃣ Real Data (CSV Input)
+
+```python
+import pandas as pd
+from dependent_censoring import detect_dependent_censoring
+
+df = pd.read_csv("mydata.csv")
+
+p_global = detect_dependent_censoring(
+    df,
+    quantiles=[0.25, 0.5, 0.75],
+    B=500,
+    seed=123,
+    min_stratum_size=20,
+    variance_threshold=1e-4
+)
+
+print("Global p-value:", p_global)
+```
+
+---
+
+## 2️⃣ Synthetic Data Example
+
+```python
+from dependent_censoring import generate_survival_data, detect_dependent_censoring
+
+df = generate_survival_data(
+    kind="copula_direct",
+    n_subjects=500,
+    n_features=3,
+    copula="clayton",
+    theta=4.0,
+    gamma=0.5,
+    seed=1
+)
+
+p_global = detect_dependent_censoring(
+    df,
+    quantiles=[0.3, 0.5, 0.7, 0.9],
+    B=200,
+    seed=123,
+    min_stratum_size=30,
+    variance_threshold=1e-3
+)
+
+print("Global p-value:", p_global)
+```
+
+---
+
+# Interpretation
+
+Common rule of thumb:
+
+- **p < 0.05** → Evidence against conditional independence (dependent censoring detected)  
+- **p ≥ 0.05** → No strong evidence against the independence assumption  
+
+---
+
+# Main Function
+
+```python
+detect_dependent_censoring(
+    df,
+    quantiles,
+    B=500,
+    seed=123,
+    min_stratum_size=30,
+    variance_threshold=1e-9
+)
+```
+
+### Arguments
+
+| Argument | Description |
+|----------|------------|
+| `df` | pandas DataFrame |
+| `quantiles` | List of time quantiles to evaluate |
+| `B` | Number of permutation samples |
+| `seed` | Random seed |
+| `min_stratum_size` | Minimum size per covariate stratum |
+| `variance_threshold` | Minimum null variance for stability |
+
+### Output
+
+Returns:
+
+```
+float  → Global p-value
+```
+
+---
+
+# Synthetic Data Generator
+
+```python
+generate_survival_data(
+    kind="copula_direct",
+    n_subjects=1000,
+    n_features=3,
+    seed=42,
+    ...
+)
+```
+
+Available generator types:
+
+- `"copula_direct"`  
+- `"frailty_discrete"`  
+- `"frailty_continuous"`  
+
+---
+
+# Computational Notes
+
+- The method is permutation-based.
+- Runtime increases with:
+  - Larger `B`
+  - Larger sample size
+  - More strata
+- For exploratory analysis, start with `B=200`.
+- For publication-level results, consider `B ≥ 1000`.
+
+---
+
+# Citation
+
+If you use this software in academic work, please cite:
+
+```
+()
+```
+
+---
+
+# Author
+
+Hamid Kalantari
+University of Alberta  
+2026
