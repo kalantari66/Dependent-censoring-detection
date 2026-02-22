@@ -1,7 +1,7 @@
 # dependent_censoring.py
 import numpy as np
 import pandas as pd
-from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple, Union
 from collections import defaultdict
 from scipy.stats import norm, levy_stable
 
@@ -295,7 +295,7 @@ def detect_dependent_censoring(
     e_col: str = "event_indicator",
     x_cols: Optional[List[str]] = None,
     return_details: bool = False,
-) -> float | Dict[str, Any]:
+) -> Union[float, Dict[str, Any]]:
     """
     Public function required by your GitHub users.
 
@@ -609,3 +609,4 @@ def _stratified_fisher_test_standardized_strata(
         "per_stratum_p_values": {str(k): v["p_value"] for k, v in per_s.items()},
         "excluded_strata": [str(s) for s in unique_strata if s not in per_s],
     }
+
