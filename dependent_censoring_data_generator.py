@@ -20,48 +20,13 @@ import pandas as pd
 from scipy.stats import levy_stable, norm
 
 
-def _bin_continuous_features(x_continuous: np.ndarray, n_bins: int) -> np.ndarray:
-    """Quantile-bin each column into integer categories."""
-    x_binned = np.zeros_like(x_continuous, dtype=int)
-    for i in range(x_continuous.shape[1]):
-        x_binned[:, i] = pd.qcut(
-            x_continuous[:, i],
-            q=n_bins,
-            labels=False,
-            duplicates="drop",
-        ).astype(int)
-    return x_binned
-
-
-def generate_copula_continuous_features(
-    n_subjects: int = 1000,
-    n_features: int = 3,
-    copula: Literal["gaussian", "clayton", "gumbel", "frank"] = "gaussian",
-    theta: float = 0.4,
-    gamma: float = 0.0,
-    n_bins: int = 4,
-    event_params: Optional[Dict[str, Any]] = None,
-    censoring_params: Optional[Dict[str, Any]] = None,
-    seed: int = 42,
-    include_latent_columns: bool = False,
-    include_continuous_features: bool = False,
-) -> pd.DataFrame:
-    """
-    Generate survival data with copula-based dependence and optional direct dependence.
-
-    Notes:
-    - `gamma > 0` introduces direct dependence by making censoring scale depend on event time.
-    - Default output is detector-friendly (discrete x columns only).
-    """
-    rng = np.random.default_rng(seed)
-    x_continuous = rng.normal(0.0, 1.0, size=(n_subjects, n_features))
-
-    if event_params is None:
-        event_params = {"beta": rng.uniform(-0.5, 0.5, n_features), "scale": 100.0, "rho": 1.5}
-    if censoring_params is None:
-        censoring_params = {"beta": rng.uniform(-0.5, 0.5, n_features), "scale": 150.0, "rho": 1.0}
-
-    eps = 1e-12
+def _sample_copula_uniforms(
+    rng: np.random.Generator,
+    n_subjects: int,
+    copula: Literal["gaussian", "clayton", "gumbel", "frank"],
+    theta: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Sample paired uniforms (u, v) from a selected copula."""
     if copula == "gaussian":
         if not (-1.0 < theta < 1.0):
             raise ValueError("For gaussian copula, theta must be in (-1, 1).")
@@ -117,14 +82,58 @@ def generate_copula_continuous_features(
     else:
         raise ValueError(f"Unsupported copula: {copula}")
 
-    u = np.clip(u, eps, 1.0 - eps)
-    v = np.clip(v, eps, 1.0 - eps)
+    eps = 1e-12
+    return np.clip(u, eps, 1.0 - eps), np.clip(v, eps, 1.0 - eps)
+
+
+def _bin_continuous_features(x_continuous: np.ndarray, n_bins: int) -> np.ndarray:
+    """Quantile-bin each column into integer categories."""
+    x_binned = np.zeros_like(x_continuous, dtype=int)
+    for i in range(x_continuous.shape[1]):
+        x_binned[:, i] = pd.qcut(
+            x_continuous[:, i],
+            q=n_bins,
+            labels=False,
+            duplicates="drop",
+        ).astype(int)
+    return x_binned
+
+
+def generate_copula_continuous_features(
+    n_subjects: int = 1000,
+    n_features: int = 3,
+    copula: Literal["gaussian", "clayton", "gumbel", "frank"] = "gaussian",
+    theta: float = 0.4,
+    gamma: float = 0.0,
+    n_bins: int = 4,
+    event_params: Optional[Dict[str, Any]] = None,
+    censoring_params: Optional[Dict[str, Any]] = None,
+    seed: int = 42,
+    include_latent_columns: bool = False,
+    include_continuous_features: bool = False,
+) -> pd.DataFrame:
+    """
+    Generate survival data with copula-based dependence and optional direct dependence.
+
+    Notes:
+    - `gamma > 0` introduces direct dependence by making censoring scale depend on event time.
+    - Default output is detector-friendly (discrete x columns only).
+    """
+    rng = np.random.default_rng(seed)
+    x_continuous = rng.normal(0.0, 1.0, size=(n_subjects, n_features))
+
+    if event_params is None:
+        event_params = {"beta": rng.uniform(-0.5, 0.5, n_features), "scale": 100.0, "rho": 1.5}
+    if censoring_params is None:
+        censoring_params = {"beta": rng.uniform(-0.5, 0.5, n_features), "scale": 150.0, "rho": 1.0}
+
+    u, v = _sample_copula_uniforms(rng, n_subjects, copula, theta)
 
     g_e = np.exp(x_continuous @ np.asarray(event_params["beta"]))
     t_e = float(event_params["scale"]) * (-np.log(u) / g_e) ** (1.0 / float(event_params["rho"]))
 
     median_e = np.median(t_e)
-    direct_factor = np.exp(gamma * (t_e - median_e) / (median_e + eps))
+    direct_factor = np.exp(-gamma * (t_e - median_e) / (median_e + 1e-12))
     scale_c_individual = float(censoring_params["scale"]) * direct_factor
     g_c = np.exp(x_continuous @ np.asarray(censoring_params["beta"]))
     t_c = scale_c_individual * (-np.log(v) / g_c) ** (1.0 / float(censoring_params["rho"]))
@@ -142,6 +151,59 @@ def generate_copula_continuous_features(
     if include_continuous_features:
         for i in range(n_features):
             df[f"x{i}_continuous"] = x_continuous[:, i]
+
+    if include_latent_columns:
+        df["true_event_time"] = t_e
+        df["censoring_time"] = t_c
+
+    cols = ["observed_time", "event_indicator"] + [f"x{i}" for i in range(n_features)]
+    extras = [c for c in df.columns if c not in cols]
+    return df[cols + extras]
+
+
+def generate_direct_dependence_data(
+    n_subjects: int = 1000,
+    n_features: int = 3,
+    copula: Literal["gaussian", "clayton", "gumbel", "frank"] = "gaussian",
+    theta: float = 2.0,
+    gamma: float = 0.0,
+    event_params: Optional[Dict[str, Any]] = None,
+    censoring_params: Optional[Dict[str, Any]] = None,
+    seed: int = 42,
+    include_latent_columns: bool = True,
+) -> pd.DataFrame:
+    """
+    Generate data with two dependence sources:
+    1) copula dependence between latent event/censoring shocks,
+    2) direct dependence via censoring scale linked to latent event time.
+
+    Covariates are discrete binary x0..xK.
+    """
+    rng = np.random.default_rng(seed)
+    x = rng.integers(0, 2, size=(n_subjects, n_features))
+
+    if event_params is None:
+        event_params = {"beta": rng.uniform(-0.5, 0.5, n_features), "scale": 100.0, "rho": 1.5}
+    if censoring_params is None:
+        censoring_params = {"beta": rng.uniform(-0.5, 0.5, n_features), "scale": 150.0, "rho": 1.0}
+
+    u, v = _sample_copula_uniforms(rng, n_subjects, copula, theta)
+
+    g_e = np.exp(x @ np.asarray(event_params["beta"]))
+    t_e = float(event_params["scale"]) * (-np.log(u) / g_e) ** (1.0 / float(event_params["rho"]))
+
+    median_e = np.median(t_e)
+    direct_factor = np.exp(-gamma * (t_e - median_e) / (median_e + 1e-12))
+    scale_c_individual = float(censoring_params["scale"]) * direct_factor
+    g_c = np.exp(x @ np.asarray(censoring_params["beta"]))
+    t_c = scale_c_individual * (-np.log(v) / g_c) ** (1.0 / float(censoring_params["rho"]))
+
+    observed_time = np.minimum(t_e, t_c)
+    event_indicator = (t_e <= t_c).astype(int)
+
+    df = pd.DataFrame({f"x{i}": x[:, i] for i in range(n_features)})
+    df["observed_time"] = observed_time
+    df["event_indicator"] = event_indicator
 
     if include_latent_columns:
         df["true_event_time"] = t_e
@@ -275,7 +337,11 @@ def generate_dependent_continuous_features(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate synthetic datasets for dependent-censoring tests.")
-    parser.add_argument("--generator", choices=["copula", "frailty_binary", "frailty_continuous"], default="copula")
+    parser.add_argument(
+        "--generator",
+        choices=["copula", "direct_discrete", "frailty_binary", "frailty_continuous"],
+        default="copula",
+    )
     parser.add_argument("--out", required=True, help="Output CSV path")
 
     parser.add_argument("--n-subjects", type=int, default=1000)
@@ -311,6 +377,16 @@ def main() -> None:
             include_latent_columns=args.include_latent_columns,
             include_continuous_features=args.include_continuous_features,
         )
+    elif args.generator == "direct_discrete":
+        df = generate_direct_dependence_data(
+            n_subjects=args.n_subjects,
+            n_features=args.n_features,
+            copula=args.copula,
+            theta=args.theta,
+            gamma=args.gamma,
+            seed=args.seed,
+            include_latent_columns=args.include_latent_columns,
+        )
     elif args.generator == "frailty_binary":
         df = generate_dependent_via_frailty_mod(
             n_subjects=args.n_subjects,
@@ -342,4 +418,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
