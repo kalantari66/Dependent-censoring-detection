@@ -98,7 +98,7 @@ This generator module is kept in-repo for experiments and is not part of the `cm
 
 ```python
 from cmi import detect_dependent_censoring
-from experiments import generate_survival_data
+from experiments.data_generation import generate_survival_data
 
 df = generate_survival_data(
     kind="copula_direct",
