@@ -142,12 +142,13 @@ def _compute_stratum_cmi_bounds(stratum_counts: Dict[str, Any], n_total_overall:
 
 
 def _get_delta_I(
-    df: pd.DataFrame, 
-    t: float, stratum_key: 
-    Tuple, x_cols: List[str], 
-    n_total: int, 
-    t_col: str, 
-    e_col: str
+    df: pd.DataFrame,
+    t: float,
+    stratum_key: Tuple,
+    x_cols: List[str],
+    n_total: int,
+    t_col: str,
+    e_col: str,
 ) -> float:
     counts = _compute_counts_for_time(df, t, x_cols, t_col, e_col).get(stratum_key)
     if counts and counts["N"] > 0:
