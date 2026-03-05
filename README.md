@@ -14,12 +14,39 @@ This repository provides:
 
 ## Installation
 
-Python ≥ 3.8 is recommended.
+Python >= 3.10 is recommended.
 
-Install dependencies:
+For local development in this repository:
 
 ```bash
-pip install numpy pandas scipy scikit-learn scikit-survival
+pip install -e .
+```
+
+For a direct dependency-only install:
+
+```bash
+pip install -r requirements.txt
+```
+
+Future PyPI target package name: `cmi`.
+
+---
+
+## Project Structure
+
+```text
+.
+├── src/
+│   └── cmi/
+│       ├── __init__.py
+│       └── detection.py         # package API and internal detection logic
+├── experiments/
+│   ├── __init__.py
+│   └── data_generation.py       # synthetic data generation for experiments
+├── dependent_censoring.py       # backward-compatible wrapper
+├── pyproject.toml
+├── requirements.txt
+└── env.yaml
 ```
 
 ---
@@ -47,7 +74,7 @@ Example structure:
 
 ```python
 import pandas as pd
-from dependent_censoring import detect_dependent_censoring
+from cmi import detect_dependent_censoring
 
 df = pd.read_csv("mydata.csv")
 
@@ -67,8 +94,11 @@ print("Global p-value:", p_global)
 
 ## 2️⃣ Synthetic Data Example
 
+This generator module is kept in-repo for experiments and is not part of the `cmi` package API.
+
 ```python
-from dependent_censoring import generate_survival_data, detect_dependent_censoring
+from cmi import detect_dependent_censoring
+from experiments import generate_survival_data
 
 df = generate_survival_data(
     kind="copula_direct",
@@ -140,6 +170,8 @@ float  → Global p-value
 # Synthetic Data Generator
 
 ```python
+from experiments import generate_survival_data
+
 generate_survival_data(
     kind="copula_direct",
     n_subjects=1000,
