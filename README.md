@@ -39,11 +39,9 @@ Future PyPI target package name: `cmi`.
 ├── src/
 │   └── cmi/
 │       ├── __init__.py
-│       └── detection.py         # package API and internal detection logic
+│       └── cmi.py               # package API and internal detection logic
 ├── experiments/
-│   ├── __init__.py
 │   └── data_generation.py       # synthetic data generation for experiments
-├── dependent_censoring.py       # backward-compatible wrapper
 ├── pyproject.toml
 ├── requirements.txt
 └── env.yaml
