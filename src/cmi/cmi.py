@@ -237,7 +237,8 @@ def _generate_null_nonparametric(
     C_full = np.zeros(n)
 
     for i in range(n):
-        t_obs, e_obs = df.loc[i, t_col], df.loc[i, e_col]
+        t_obs = df.iloc[i][t_col]
+        e_obs = df.iloc[i][e_col]
         if e_obs == 1:
             E_full[i] = t_obs
             sf_C = surv_C[i]
