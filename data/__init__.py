@@ -73,12 +73,11 @@ def make_support(onehot_encode: bool = False) -> pd.DataFrame:
     Refer to the dataset description at
     https://hbiostat.org/data/repo/supportdesc for more information.
     Download from https://hbiostat.org/data/repo/support2csv.zip
+
     Returns
     -------
     pd.DataFrame
         Processed covariates for one patient in each row.
-    list[str]
-        List of columns to standardize.
 
     References
     ----------
