@@ -83,7 +83,7 @@ def preprocess_dataset(
     if feature_exclude is None:
         feature_exclude = {time_col, event_col}
     else:
-        feature_exclude = set(feature_exclude) + {time_col, event_col}
+        feature_exclude = set(feature_exclude) | {time_col, event_col}
     feature_cols = [c for c in df.columns if c not in feature_exclude]
 
     # encode features and select top ones by cardinality
