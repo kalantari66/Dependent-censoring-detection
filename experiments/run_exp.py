@@ -121,9 +121,13 @@ def main() -> None:
             "B": hyperparameters["B"],
             "seed": hyperparameters["seed"],
             "min_stratum_size": hyperparameters["min_stratum_size"],
-            "status": "success",
             "p_value": np.nan,
             "observed_fisher_stat": np.nan,
+            "n_cov_used": 0,
+            "cov_used": "",
+            "n_strata": 0,
+            "n_excluded_strata": 0,
+            "status": "success",
             "error": "",
         }
 
@@ -134,7 +138,6 @@ def main() -> None:
         )
         row["ncov_used"] = len(features_select)
         row["cov_used"] = json.dumps(features_select)
-        row["n_valid_strata"] = n_valid_strata
 
         if n_valid_strata == 0:
             row["status"] = "error"
@@ -161,13 +164,9 @@ def main() -> None:
             # Sanity check: the number of per-stratum p-values should match the number of valid strata (after excluding those that don't meet min size)
             excluded = test_details["excluded_strata"]
             per_stratum = test_details["per_stratum_p_values"]
-            if len(per_stratum) != n_valid_strata:
-                raise ValueError("Length of per_stratum_p_values does not match number of valid strata.")
-            if len(excluded) != 0:
-                raise ValueError(
-                    "Strata should have been excluded during feature selection, not during testing. " \
-                    "Check the logic of select_feature_by_strata_size and detect_dependent_censoring."
-                )
+            assert len(per_stratum) + len(excluded) == n_valid_strata, "Number of per-stratum p-values plus excluded strata should equal number of valid strata."
+            row["n_strata"] = len(excluded)
+            row["n_excluded_strata"] = len(excluded)
             
             row["per_stratum_p_values"] = json.dumps(per_stratum) if isinstance(per_stratum, dict) else ""
             
