@@ -11,7 +11,7 @@ from tqdm import tqdm
 from cmi import detect_dependent_censoring, preprocess_dataset
 from data import load_data
 
-REAL_DATASETS = {"METABRIC", "NACD", "GBSG2", "Rossi", "COVID"}
+REAL_DATASETS = {"METABRIC", "NACD", "GBSG2", "NWTCO", "NPC", "AIDS", "HFCR", "leukemia", "Rossi", "COVID"}
 SEMI_SYNTH_DATASETS = {"SEMI_SYNTH_1", "SEMI_SYNTH_2"}  # placeholders 
 SYNTH_DATASETS = {"SYNTH_1", "SYNTH_2"} # placeholders
 
@@ -95,7 +95,10 @@ def main() -> None:
 
     sampled_hyperparameters = sample_hyperparameters(config=config, n_trials=args.n_trials, seed=args.seed)
 
-    raw_df = load_data(args.dataset)
+    raw_df = load_data(
+        data_name=args.dataset,
+        onehot_encode=False
+    )
     df, features_all = preprocess_dataset(
         raw_df=raw_df,
         bins=config["preprocessing"]["discretization_bins"],
