@@ -73,12 +73,11 @@ def make_support(onehot_encode: bool = False) -> pd.DataFrame:
     Refer to the dataset description at
     https://hbiostat.org/data/repo/supportdesc for more information.
     Download from https://hbiostat.org/data/repo/support2csv.zip
+
     Returns
     -------
     pd.DataFrame
         Processed covariates for one patient in each row.
-    list[str]
-        List of columns to standardize.
 
     References
     ----------
@@ -300,7 +299,7 @@ def make_aids() -> pd.DataFrame:
     Paper: https://www.nejm.org/doi/pdf/10.1056/NEJM199610103351501
     """
     aids_clinical_trials_group_study_175 = load_pickle_compat(
-        f"{CURRENT_PATH}/aids_clinicalaids_clinical_trials_group_study_175.pkl"
+        f"{CURRENT_PATH}/aids_clinical_trials_group_study_175.pkl"
     )
 
     X = aids_clinical_trials_group_study_175.data.features

@@ -22,7 +22,8 @@ def select_feature_by_strata_size(
 ) -> Tuple[List[str], int]:
     """
     Select features based on the number of strata that meet the minimum size requirement.
-    Iteratively drop the most complex feature (based on cardinality) until at least one str
+    Iteratively drop the most complex feature (based on cardinality) until at least one stratum
+    satisfies the minimum size requirement.
     """
     for k in range(len(x_cols), 0, -1):
         cand = x_cols[:k]

@@ -68,7 +68,7 @@ def preprocess_dataset(
 ) -> Tuple[pd.DataFrame, List[str]]:
     df = raw_df.copy()
     if time_col not in df.columns or event_col not in df.columns:
-        raise ValueError("Dataset must include time/event columns or observed_time/event_indicator columns.")
+        raise ValueError(f"Dataset must include '{time_col}' and '{event_col}' columns.")
 
     # drop rows with missing or non-positive time, and ensure event indicator is binary
     df = df.replace([np.inf, -np.inf], np.nan)
@@ -83,7 +83,7 @@ def preprocess_dataset(
     if feature_exclude is None:
         feature_exclude = {time_col, event_col}
     else:
-        feature_exclude = set(feature_exclude) + {time_col, event_col}
+        feature_exclude = set(feature_exclude) | {time_col, event_col}
     feature_cols = [c for c in df.columns if c not in feature_exclude]
 
     # encode features and select top ones by cardinality
