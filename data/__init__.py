@@ -300,7 +300,7 @@ def make_aids() -> pd.DataFrame:
     Paper: https://www.nejm.org/doi/pdf/10.1056/NEJM199610103351501
     """
     aids_clinical_trials_group_study_175 = load_pickle_compat(
-        f"{CURRENT_PATH}/aids_clinicalaids_clinical_trials_group_study_175.pkl"
+        f"{CURRENT_PATH}/aids_clinical_trials_group_study_175.pkl"
     )
 
     X = aids_clinical_trials_group_study_175.data.features
