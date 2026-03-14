@@ -25,7 +25,12 @@ def detect_dependent_censoring(
     Public function for dependent censoring detection.
 
     Inputs:
-      df, quantiles, B, seed, min_stratum_size, variance_threshold
+      df: pandas DataFrame containing the data
+      quantiles: iterable of quantiles to use for time points
+      B: number of bootstrap samples
+      seed: random seed for reproducibility
+      min_stratum_size: minimum size of each stratum
+      variance_threshold: threshold for variance in Fisher's exact test
 
     Output:
       global p-value (or dict with details if return_details=True)
@@ -271,6 +276,23 @@ def _stratified_fisher_test_standardized_strata(
     t_col: str,
     e_col: str,
 ) -> Dict[str, Any]:
+    """
+    Stratified test using Fisher's method to combine p-values across strata, with standardized strata across permutations.
+
+    Input:
+    - df: input DataFrame
+    - times: list of time points to evaluate
+    - x_cols: columns to define strata
+    - B: number of bootstrap samples
+    - seed: random seed for reproducibility
+    - min_stratum_size: minimum size of each stratum to be included in the test
+    - variance_threshold: minimum variance threshold for including a stratum in the Fisher combination
+    - t_col: column name for observed times
+    - e_col: column name for event indicators
+
+    Output:
+    - dict with final p-value, observed Fisher statistic, per-stratum p-values, and excluded strata
+    """
     rng = np.random.default_rng(seed)
     times = list(times)
     n_times = len(times)

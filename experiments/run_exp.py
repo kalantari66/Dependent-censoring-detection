@@ -1,0 +1,191 @@
+import argparse
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+
+from cmi import detect_dependent_censoring, preprocess_dataset
+from data import load_data
+
+REAL_DATASETS = {"METABRIC", "NACD", "GBSG2", "Rossi", "COVID"}
+SEMI_SYNTH_DATASETS = {"SEMI_SYNTH_1", "SEMI_SYNTH_2"}  # placeholders 
+SYNTH_DATASETS = {"SYNTH_1", "SYNTH_2"} # placeholders
+
+def select_feature_by_strata_size(
+        df: pd.DataFrame, 
+        x_cols: List[str], 
+        min_size: int
+) -> Tuple[List[str], int]:
+    """
+    Select features based on the number of strata that meet the minimum size requirement.
+    Iteratively drop the most complex feature (based on cardinality) until at least one str
+    """
+    for k in range(len(x_cols), 0, -1):
+        cand = x_cols[:k]
+        group_sizes = df.groupby(cand).size()
+        valid = (group_sizes >= min_size).sum()
+        if valid > 0:
+            return cand, valid
+    group_sizes = df.groupby([x_cols[0]]).size()
+    return [x_cols[0]], (group_sizes >= min_size).sum()
+
+
+def sample_hyperparameters(
+        config: Dict[str, Any], 
+        n_trials: int, 
+        seed: int
+) -> List[Dict[str, Any]]:
+    """Sample hyperparameters for the dependent-censoring detection method based on the provided configuration."""
+    rng = np.random.default_rng(seed)
+
+    n_quantiles_choices = [v for v in config["n_quantiles"]]
+    bootstrap_choices = [v for v in config["bootstrap_samples"]]
+    min_strata_choices = [v for v in config["min_stratum_size"]]
+    seed_range = config["seed_range"]
+    seed_low, seed_high = seed_range[0], seed_range[1]
+    q_low, q_high = config["quantile_range"][0], config["quantile_range"][1]
+    if not (0 < q_low < q_high < 1):
+        raise ValueError("quantile_range must satisfy 0 < low < high < 1.")
+    if seed_low > seed_high:
+        raise ValueError("seed_range must be [low, high] with low <= high.")
+
+    sampled: List[Dict[str, Any]] = []
+    for _ in range(n_trials):
+        n_q = rng.choice(n_quantiles_choices)
+        quantiles = np.linspace(q_low, q_high, n_q).tolist()
+        sampled.append(
+            {
+                "n_quantiles": n_q,
+                "quantiles": quantiles,
+                "B": rng.choice(bootstrap_choices),
+                "seed": rng.integers(seed_low, seed_high + 1),
+                "min_stratum_size": rng.choice(min_strata_choices),
+            }
+        )
+    return sampled
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run dependent-censoring detection.")
+    parser.add_argument(
+        "--dataset",
+        type=str, 
+        default="GBSG2",
+        help="Dataset name accepted by data.load_data (e.g., METABRIC, NACD, GBSG2, Rossi, COVID).",
+    )
+    parser.add_argument("--n-trials", type=int, default=10, help="Number of hyperparameter combinations to sample.")
+    parser.add_argument("--seed", type=int, default=2026, help="Seed used only for hyperparameter sampling.")
+    args = parser.parse_args()
+
+    if args.dataset in REAL_DATASETS:
+        config_path = Path("config/real_exp.json")
+    elif args.dataset in SEMI_SYNTH_DATASETS:
+        raise NotImplementedError("Semi-synthetic datasets are not yet implemented in this script.")
+    elif args.dataset in SYNTH_DATASETS:
+        raise NotImplementedError("Fully synthetic datasets are not yet implemented in this script.")
+    else:
+        raise ValueError(f"Unrecognized dataset name: {args.dataset}")
+
+    with config_path.open("r", encoding="utf-8") as f:
+        config = json.load(f)
+
+    sampled_hyperparameters = sample_hyperparameters(config=config, n_trials=args.n_trials, seed=args.seed)
+
+    raw_df = load_data(args.dataset)
+    df, features_all = preprocess_dataset(
+        raw_df=raw_df,
+        bins=config["preprocessing"]["discretization_bins"],
+        max_features=config["preprocessing"]["max_selected_features"],
+        event_col="event",
+        time_col="time",
+        feature_exclude=None
+    )
+
+    msg = f"Running {args.n_trials} trials on {args.dataset} with {len(df)} samples and {len(features_all)} covariates (after preprocessing)."
+    # TODO: add parallel processing
+    records: List[Dict[str, Any]] = []
+    for run_id, hyperparameters in enumerate(tqdm(sampled_hyperparameters, desc=msg), start=1):
+        row: Dict[str, Any] = {
+            "run_id": run_id,
+            "dataset": args.dataset,
+            "n_samples": len(df),
+            "n_quantiles": hyperparameters["n_quantiles"],
+            "quantiles": json.dumps(hyperparameters["quantiles"]),
+            "B": hyperparameters["B"],
+            "seed": hyperparameters["seed"],
+            "min_stratum_size": hyperparameters["min_stratum_size"],
+            "status": "success",
+            "p_value": np.nan,
+            "observed_fisher_stat": np.nan,
+            "error": "",
+        }
+
+        features_select, n_valid_strata = select_feature_by_strata_size(
+            df=df,
+            x_cols=features_all,
+            min_size=hyperparameters["min_stratum_size"],
+        )
+        row["ncov_used"] = len(features_select)
+        row["cov_used"] = json.dumps(features_select)
+        row["n_valid_strata"] = n_valid_strata
+
+        if n_valid_strata == 0:
+            row["status"] = "error"
+            row["error"] = "No strata meet min_stratum_size after preprocessing."
+            records.append(row)
+            continue
+
+        run_df = df[["time", "event"] + features_select].copy()
+        try:
+            test_details = detect_dependent_censoring(
+                run_df,
+                quantiles=hyperparameters["quantiles"],
+                B=hyperparameters["B"],
+                seed=hyperparameters["seed"],
+                min_stratum_size=hyperparameters["min_stratum_size"],
+                t_col="time",
+                e_col="event",
+                x_cols=features_select,
+                return_details=True,
+            )
+            row["p_value"] = test_details["final_p_value"]
+            row["observed_fisher_stat"] = test_details["observed_fisher_stat"]
+
+            # Sanity check: the number of per-stratum p-values should match the number of valid strata (after excluding those that don't meet min size)
+            excluded = test_details["excluded_strata"]
+            per_stratum = test_details["per_stratum_p_values"]
+            if len(per_stratum) != n_valid_strata:
+                raise ValueError("Length of per_stratum_p_values does not match number of valid strata.")
+            if len(excluded) != 0:
+                raise ValueError(
+                    "Strata should have been excluded during feature selection, not during testing. " \
+                    "Check the logic of select_feature_by_strata_size and detect_dependent_censoring."
+                )
+            
+            row["per_stratum_p_values"] = json.dumps(per_stratum) if isinstance(per_stratum, dict) else ""
+            
+            if pd.isna(row["p_value"]):
+                row["status"] = "error"
+                row["error"] = "Invalid p-value."
+        except Exception as exc:
+            row["status"] = "error"
+            row["error"] = str(exc)
+        records.append(row)
+
+    now = datetime.now().strftime("%Y%m%d_%H%M%S")
+    file = Path("results") / f"{args.dataset}_{args.n_trials}_{now}.csv"
+    file.parent.mkdir(parents=True, exist_ok=True)
+    results_df = pd.DataFrame(records)
+    results_df.to_csv(file, index=False)
+
+    success_count = (results_df["status"] == "success").sum()
+    error_count = (results_df["status"] == "error").sum()
+    print(f"Saved {len(results_df)} runs to {file} (success={success_count}, error={error_count}).")
+
+
+if __name__ == "__main__":
+    main()
