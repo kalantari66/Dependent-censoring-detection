@@ -40,8 +40,11 @@ Future PyPI target package name: `cmi`.
 │   └── cmi/
 │       ├── __init__.py
 │       └── cmi.py               # package API and internal detection logic
-├── experiments/
-│   └── data_generation.py       # synthetic data generation for experiments
+├── data/
+│   ├── __init__.py
+│   ├── data_generation.py       # synthetic data generation utilities
+│   ├── semi_synth_generation.py # semi-synthetic dataset generation utilities
+│   └── real_data.py             # real-world dataset loaders
 ├── pyproject.toml
 ├── requirements.txt
 └── env.yaml
@@ -96,9 +99,9 @@ This generator module is kept in-repo for experiments and is not part of the `cm
 
 ```python
 from cmi import detect_dependent_censoring
-from experiments.data_generation import generate_survival_data
+from data import dgp
 
-df = generate_survival_data(
+df = dgp(
     kind="copula_direct",
     n_subjects=500,
     n_features=3,
@@ -168,9 +171,9 @@ float  → Global p-value
 # Synthetic Data Generator
 
 ```python
-from experiments import generate_survival_data
+from data import dgp
 
-generate_survival_data(
+dgp(
     kind="copula_direct",
     n_subjects=1000,
     n_features=3,

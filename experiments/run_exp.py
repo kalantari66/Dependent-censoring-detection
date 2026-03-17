@@ -9,7 +9,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from cmi import detect_dependent_censoring, preprocess_dataset
-from data import load_data
+from data import load_real_data
 
 REAL_DATASETS = {"METABRIC", "NACD", "GBSG2", "NWTCO", "NPC", "AIDS", "HFCR", "leukemia", "Rossi", "COVID"}
 SEMI_SYNTH_DATASETS = {"SEMI_SYNTH_1", "SEMI_SYNTH_2"}  # placeholders 
@@ -76,7 +76,7 @@ def main() -> None:
         "--dataset",
         type=str, 
         default="GBSG2",
-        help="Dataset name accepted by data.load_data (e.g., METABRIC, NACD, GBSG2, Rossi, COVID).",
+        help="Dataset name accepted by data.load_real_data (e.g., METABRIC, NACD, GBSG2, Rossi, COVID).",
     )
     parser.add_argument("--n-trials", type=int, default=10, help="Number of hyperparameter combinations to sample.")
     parser.add_argument("--seed", type=int, default=2026, help="Seed used only for hyperparameter sampling.")
@@ -96,7 +96,7 @@ def main() -> None:
 
     sampled_hyperparameters = sample_hyperparameters(config=config, n_trials=args.n_trials, seed=args.seed)
 
-    raw_df = load_data(
+    raw_df = load_real_data(
         data_name=args.dataset,
         onehot_encode=False
     )
@@ -124,7 +124,7 @@ def main() -> None:
             "min_stratum_size": hyperparameters["min_stratum_size"],
             "p_value": np.nan,
             "observed_fisher_stat": np.nan,
-            "n_cov_used": 0,
+            "ncov_used": 0,
             "cov_used": "",
             "n_strata": 0,
             "n_excluded_strata": 0,
@@ -166,7 +166,7 @@ def main() -> None:
             excluded = test_details["excluded_strata"]
             per_stratum = test_details["per_stratum_p_values"]
             assert len(per_stratum) + len(excluded) == n_valid_strata, "Number of per-stratum p-values plus excluded strata should equal number of valid strata."
-            row["n_strata"] = len(excluded)
+            row["n_strata"] = len(per_stratum)
             row["n_excluded_strata"] = len(excluded)
             
             row["per_stratum_p_values"] = json.dumps(per_stratum) if isinstance(per_stratum, dict) else ""
