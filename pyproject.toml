@@ -14,6 +14,7 @@ dependencies = [
   "scipy",
   "scikit-learn",
   "scikit-survival",
+  "tqdm",
 ]
 
 [tool.setuptools]

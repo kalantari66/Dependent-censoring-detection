@@ -1,5 +1,3 @@
-"""Synthetic data generators for experiments and method checks."""
-
 from typing import Any, Dict, Literal, Optional
 
 import numpy as np
@@ -7,7 +5,7 @@ import pandas as pd
 from scipy.stats import levy_stable, norm
 
 
-def generate_survival_data(
+def dgp(
     kind: Literal["copula_direct", "frailty_discrete", "frailty_continuous"] = "copula_direct",
     n_subjects: int = 1000,
     n_features: int = 3,
