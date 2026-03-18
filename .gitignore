@@ -10,3 +10,4 @@ dist/
 *.pkl
 *.h5
 *.sh
+results/
