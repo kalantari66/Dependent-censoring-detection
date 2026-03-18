@@ -170,7 +170,7 @@ def make_nacd() -> pd.DataFrame:
 
 
 def make_metabric() -> pd.DataFrame:
-    df = pd.read_csv(f"{CURRENT_PATH}/metabric.csv").rename(columns={"delta": "event", "duration": "time"})
+    df = pd.read_csv(f"{CURRENT_PATH}/Metabric.csv").rename(columns={"delta": "event"})
     return df
 
 
