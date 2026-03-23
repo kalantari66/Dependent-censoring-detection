@@ -103,7 +103,7 @@ def semiDGP(
 def _build_model(model: Literal["coxph", "rsf"], seed: int, **model_params) -> Any:
     """Instantiate one survival model with stable defaults."""
     if model == "coxph":
-        return CoxPHSurvivalAnalysis(**model_params, fit_baseline_model=True)
+        return CoxPHSurvivalAnalysis(**model_params)
     elif model == "rsf":
         return RandomSurvivalForest(**model_params, random_state=seed)
     else:
