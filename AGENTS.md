@@ -67,3 +67,16 @@ Other style guidelines:
 9. **Functional Code**: Use functional and stateless approaches where they improve clarity
 10. **Clean logic**: Keep core logic clean and push implementation details to the edges
 11. **File Organization**: Balance file organization with simplicity - use an appropriate number of files for the project scale
+
+## First Principles
+
+Please think using first principles. You can't always assume I know exactly what I want and how to get it. Be deliberate, start with the original needs and problems, and if the motivations and goals are unclear, stop and discuss them with me
+
+## Solution Guidelines
+
+When you are required to provide a modification or refactoring solution, it must comply with the following guidelines:
+
+- No compatibility or patching solutions are allowed.
+- No over-design is allowed; maintain the shortest path to implementation and do not violate the first requirement.
+- No solutions beyond the reqirements I have provided are allowed, such as fallback or degradtion solutions.
+- You must ensure the logical correctness of the solution; it must undergo end-to-end logical verification.

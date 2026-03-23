@@ -9,10 +9,10 @@ import pandas as pd
 from tqdm import tqdm
 
 from cmi import detect_dependent_censoring, preprocess_dataset
-from data import load_real_data
+from data import load_real_data, semiDGP
 
 REAL_DATASETS = {"METABRIC", "NACD", "GBSG2", "NWTCO", "NPC", "AIDS", "HFCR", "leukemia", "Rossi", "COVID"}
-SEMI_SYNTH_DATASETS = {"SEMI_SYNTH_1", "SEMI_SYNTH_2"}  # placeholders 
+SEMI_SYNTH_DATASETS = {f"SEMI_{data}" for data in REAL_DATASETS}
 SYNTH_DATASETS = {"SYNTH_1", "SYNTH_2"} # placeholders
 
 def select_feature_by_strata_size(
@@ -70,36 +70,74 @@ def sample_hyperparameters(
     return sampled
 
 
+def resolve_dataset(
+    dataset: str,
+    dependency_kind: str,
+    copula_type: str,
+    seed: int,
+) -> tuple[str, Path, pd.DataFrame]:
+    """Resolve the experiment dataset and return its label, config, and frame."""
+    # TODO: right now all the experiments use the same config file.
+    config_path = Path("config/real_exp.json")
+
+    if dataset in SYNTH_DATASETS:
+        raise NotImplementedError("Fully synthetic datasets are not yet implemented in this script.")
+    elif dataset in SEMI_SYNTH_DATASETS:
+        dataset_label = f"{dataset}_{dependency_kind}"
+        if dependency_kind == "copula":
+            dataset_label += f"_{copula_type}"
+        raw_df = semiDGP(
+            dataset=dataset.split("_", 1)[1], # extract the real dataset name from the SEMI_ prefix
+            kind=dependency_kind,
+            model="coxph",
+            seed=seed,
+            copula=copula_type,
+        )
+    elif dataset in REAL_DATASETS:
+        raw_df = load_real_data(data_name=dataset, onehot_encode=False)
+        dataset_label = f"REAL_{dataset}"
+    else:
+        raise ValueError(f"Unsupported dataset: {dataset}")
+    
+    return dataset_label, config_path, raw_df
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run dependent-censoring detection.")
     parser.add_argument(
         "--dataset",
         type=str, 
-        default="GBSG2",
-        help="Dataset name accepted by data.load_real_data (e.g., METABRIC, NACD, GBSG2, Rossi, COVID).",
+        default="SEMI_GBSG2",
+        help="Dataset name, including real, semi-synthetic, and synthetic options.",
+    )
+    parser.add_argument(
+        "--dependency-kind",
+        choices=("copula", "frailty"),
+        default="frailty",
+        help="Semi-synthetic dependence construction used when --semi-synth is enabled.",
+    )
+    parser.add_argument(
+        "--copula-type",
+        choices=("gaussian", " clayton", "gumbel", "frank"),
+        default="clayton",
+        help="Type of copula to use for semi-synthetic dependence construction.",
     )
     parser.add_argument("--n-trials", type=int, default=10, help="Number of hyperparameter combinations to sample.")
-    parser.add_argument("--seed", type=int, default=2026, help="Seed used only for hyperparameter sampling.")
+    parser.add_argument("--seed", type=int, default=2026, help="Seed for hyperparameter sampling and DGP.")
     args = parser.parse_args()
 
-    if args.dataset in REAL_DATASETS:
-        config_path = Path("config/real_exp.json")
-    elif args.dataset in SEMI_SYNTH_DATASETS:
-        raise NotImplementedError("Semi-synthetic datasets are not yet implemented in this script.")
-    elif args.dataset in SYNTH_DATASETS:
-        raise NotImplementedError("Fully synthetic datasets are not yet implemented in this script.")
-    else:
-        raise ValueError(f"Unrecognized dataset name: {args.dataset}")
+    dataset_label, config_path, raw_df = resolve_dataset(
+        dataset=args.dataset,
+        dependency_kind=args.dependency_kind,
+        copula_type=args.copula_type,
+        seed=args.seed,
+    )
 
     with config_path.open("r", encoding="utf-8") as f:
         config = json.load(f)
 
     sampled_hyperparameters = sample_hyperparameters(config=config, n_trials=args.n_trials, seed=args.seed)
 
-    raw_df = load_real_data(
-        data_name=args.dataset,
-        onehot_encode=False
-    )
     df, features_all = preprocess_dataset(
         raw_df=raw_df,
         bins=config["preprocessing"]["discretization_bins"],
@@ -109,13 +147,13 @@ def main() -> None:
         feature_exclude=None
     )
 
-    msg = f"Running {args.n_trials} trials on {args.dataset} with {len(df)} samples and {len(features_all)} covariates (after preprocessing)."
+    msg = f"Running {args.n_trials} trials on {dataset_label} with {len(df)} samples and {len(features_all)} covariates (after preprocessing)."
     # TODO: add parallel processing
     records: List[Dict[str, Any]] = []
     for run_id, hyperparameters in enumerate(tqdm(sampled_hyperparameters, desc=msg), start=1):
         row: Dict[str, Any] = {
             "run_id": run_id,
-            "dataset": args.dataset,
+            "dataset": dataset_label,
             "n_samples": len(df),
             "n_quantiles": hyperparameters["n_quantiles"],
             "quantiles": json.dumps(hyperparameters["quantiles"]),
@@ -180,7 +218,7 @@ def main() -> None:
         records.append(row)
 
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
-    file = Path("results") / f"{args.dataset}_{args.n_trials}_{now}.csv"
+    file = Path("results") / f"{dataset_label}_{args.n_trials}_{now}.csv"
     file.parent.mkdir(parents=True, exist_ok=True)
     results_df = pd.DataFrame(records)
     results_df.to_csv(file, index=False)

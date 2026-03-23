@@ -24,10 +24,9 @@ def dgp(
     Generate synthetic right-censored survival data with controllable dependence.
 
     Returns a DataFrame containing:
-      - observed_time
-      - event_indicator
+      - time
+      - event
       - x0..x{p-1} strata covariates
-    and latent timing columns used for simulation diagnostics.
     """
     if kind == "copula_direct":
         return _generate_direct_dependence_data(
@@ -62,32 +61,20 @@ def dgp(
     raise ValueError(f"Unknown kind={kind}")
 
 
-def _generate_direct_dependence_data(
-    n_subjects: int = 1000,
-    n_features: int = 3,
-    copula: Literal["gaussian", "clayton", "gumbel", "frank"] = "gaussian",
-    theta: float = 2.0,
-    gamma: float = 0.0,
-    event_params: Optional[Dict[str, Any]] = None,
-    censoring_params: Optional[Dict[str, Any]] = None,
-    seed: int = 42,
-) -> pd.DataFrame:
-    rng = np.random.default_rng(seed)
-    X = rng.integers(0, 2, size=(n_subjects, n_features))
-
-    if event_params is None:
-        event_params = {"beta": rng.uniform(-0.5, 0.5, n_features), "scale": 100, "rho": 1.5}
-    if censoring_params is None:
-        censoring_params = {"beta": rng.uniform(-0.5, 0.5, n_features), "scale": 150, "rho": 1.0}
-
-    eps = 1e-12
-
+def sample_copula_uniform_pairs(
+    rng: np.random.Generator,
+    n_subjects: int,
+    copula: Literal["gaussian", "clayton", "gumbel", "frank"],
+    theta: float,
+    eps: float = 1e-12,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Sample dependent uniform pairs from the requested copula."""
     if copula == "gaussian":
         if not (-1 < theta < 1):
             raise ValueError("For gaussian copula, theta must be in (-1,1).")
         cov = np.array([[1.0, theta], [theta, 1.0]])
-        Z = rng.standard_normal(size=(n_subjects, 2))
-        corr_normals = Z @ np.linalg.cholesky(cov).T
+        z = rng.standard_normal(size=(n_subjects, 2))
+        corr_normals = z @ np.linalg.cholesky(cov).T
         u, v = norm.cdf(corr_normals[:, 0]), norm.cdf(corr_normals[:, 1])
 
     elif copula == "clayton":
@@ -109,11 +96,11 @@ def _generate_direct_dependence_data(
         else:
             alpha = 1.0 / theta
             scale = (np.cos(np.pi * alpha / 2.0)) ** (1.0 / alpha)
-            S = levy_stable.rvs(alpha=alpha, beta=1.0, scale=scale, loc=0, size=n_subjects, random_state=rng)
-            E1 = rng.exponential(scale=1.0, size=n_subjects)
-            E2 = rng.exponential(scale=1.0, size=n_subjects)
-            u = np.exp(-E1 / S)
-            v = np.exp(-E2 / S)
+            s = levy_stable.rvs(alpha=alpha, beta=1.0, scale=scale, loc=0, size=n_subjects, random_state=rng)
+            e1 = rng.exponential(scale=1.0, size=n_subjects)
+            e2 = rng.exponential(scale=1.0, size=n_subjects)
+            u = np.exp(-e1 / s)
+            v = np.exp(-e2 / s)
 
     elif copula == "frank":
         if theta == 0:
@@ -137,6 +124,29 @@ def _generate_direct_dependence_data(
 
     u = np.clip(u, eps, 1.0 - eps)
     v = np.clip(v, eps, 1.0 - eps)
+    return u, v
+
+
+def _generate_direct_dependence_data(
+    n_subjects: int = 1000,
+    n_features: int = 3,
+    copula: Literal["gaussian", "clayton", "gumbel", "frank"] = "gaussian",
+    theta: float = 2.0,
+    gamma: float = 0.0,
+    event_params: Optional[Dict[str, Any]] = None,
+    censoring_params: Optional[Dict[str, Any]] = None,
+    seed: int = 42,
+    eps = 1e-12
+) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    X = rng.integers(0, 2, size=(n_subjects, n_features))
+
+    if event_params is None:
+        event_params = {"beta": rng.uniform(-0.5, 0.5, n_features), "scale": 100, "rho": 1.5}
+    if censoring_params is None:
+        censoring_params = {"beta": rng.uniform(-0.5, 0.5, n_features), "scale": 150, "rho": 1.0}
+
+    u, v = sample_copula_uniform_pairs(rng=rng, n_subjects=n_subjects, copula=copula, theta=theta, eps=eps)
 
     g_E = np.exp(X @ event_params["beta"])
     T_E = event_params["scale"] * (-np.log(u) / g_E) ** (1.0 / event_params["rho"])
@@ -152,11 +162,8 @@ def _generate_direct_dependence_data(
     event_indicator = (T_E <= T_C).astype(int)
 
     df = pd.DataFrame(X, columns=[f"x{i}" for i in range(n_features)])
-    df["subject_id"] = np.arange(n_subjects)
-    df["observed_time"] = observed_time
-    df["event_indicator"] = event_indicator
-    df["true_event_time"] = T_E
-    df["censoring_time"] = T_C
+    df["time"] = observed_time
+    df["event"] = event_indicator
     return df
 
 
@@ -199,11 +206,8 @@ def _generate_dependent_via_frailty_mod(
     Delta = (E <= C).astype(int)
 
     df = pd.DataFrame(X, columns=[f"x{i}" for i in range(n_features)])
-    df["subject_id"] = np.arange(n_subjects)
-    df["true_event_time"] = E
-    df["censoring_time"] = C
-    df["observed_time"] = T
-    df["event_indicator"] = Delta
+    df["time"] = T
+    df["event"] = Delta
     return df
 
 
@@ -258,9 +262,6 @@ def _generate_dependent_continuous_features(
             **{f"x{i}_continuous": X_cont[:, i] for i in range(n_features)},
         }
     )
-    df["subject_id"] = np.arange(n_subjects)
-    df["true_event_time"] = E
-    df["censoring_time"] = C
-    df["observed_time"] = T
-    df["event_indicator"] = Delta
+    df["time"] = T
+    df["event"] = Delta
     return df
