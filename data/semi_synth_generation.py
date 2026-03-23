@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 from sklearn.inspection import permutation_importance
 from sksurv.ensemble import RandomSurvivalForest
-from sksurv.linear_model import CoxnetSurvivalAnalysis
+from sksurv.util import Surv
+from sksurv.linear_model import CoxPHSurvivalAnalysis
 
 from .data_generation import sample_copula_uniform_pairs
 from .real_data import load_real_data
@@ -99,16 +100,14 @@ def semiDGP(
     return result.reset_index(drop=True)
 
 
-def structured_y(time_col: pd.Series, event_col: pd.Series) -> np.ndarray:
-    return np.array(list(zip(event_col.astype(bool), time_col.astype(float))), dtype=[("status", bool), ("time", float)])
-
-
 def _build_model(model: Literal["coxph", "rsf"], seed: int, **model_params) -> Any:
     """Instantiate one survival model with stable defaults."""
     if model == "coxph":
-        return CoxnetSurvivalAnalysis(**model_params, fit_baseline_model=True)
+        return CoxPHSurvivalAnalysis(**model_params, fit_baseline_model=True)
     elif model == "rsf":
         return RandomSurvivalForest(**model_params, random_state=seed)
+    else:
+        raise ValueError(f"Unknown model={model}")
 
 
 def _fit_event_and_censoring_models(
@@ -119,8 +118,8 @@ def _fit_event_and_censoring_models(
 ) -> tuple[Any, Any]:
     """Fit paired survival models for the event and censoring processes."""
     X = df.drop(columns=["time", "event"], errors="ignore")
-    y_event = structured_y(df["time"], df["event"])
-    y_censor = structured_y(df["time"], 1 - df["event"])
+    y_event = Surv.from_arrays(time=df["time"], event=df["event"])
+    y_censor = Surv.from_arrays(time=df["time"], event=1 - df["event"])
 
     event_model = _build_model(model=model, seed=seed, **model_params).fit(X, y_event)
     censoring_model = _build_model(model=model, seed=seed, **model_params).fit(X, y_censor)
@@ -279,10 +278,10 @@ def _rank_raw_features(
     seed: int,
 ) -> list[str]:
     """Rank raw features by aggregated model importance."""
-    if isinstance(fitted_model, CoxnetSurvivalAnalysis):
+    if isinstance(fitted_model, CoxPHSurvivalAnalysis):
         importances = pd.Series(np.abs(fitted_model.coef_), index=X.columns, dtype=float)
     elif isinstance(fitted_model, RandomSurvivalForest):
-        y = structured_y(time_col=T, event_col=E)
+        y = Surv.from_arrays(time=T, event=E)
         permutation = permutation_importance(
             estimator=fitted_model,
             X=X,

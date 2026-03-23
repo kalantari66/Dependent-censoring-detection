@@ -114,11 +114,11 @@ def main() -> None:
         "--dependency-kind",
         choices=("copula", "frailty"),
         default="frailty",
-        help="Semi-synthetic dependence construction used when --semi-synth is enabled.",
+        help="Semi-synthetic dependence construction used when the selected --dataset is semi-synthetic (SEMI_*).",
     )
     parser.add_argument(
         "--copula-type",
-        choices=("gaussian", " clayton", "gumbel", "frank"),
+        choices=("gaussian", "clayton", "gumbel", "frank"),
         default="clayton",
         help="Type of copula to use for semi-synthetic dependence construction.",
     )

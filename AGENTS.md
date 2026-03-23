@@ -78,5 +78,5 @@ When you are required to provide a modification or refactoring solution, it must
 
 - No compatibility or patching solutions are allowed.
 - No over-design is allowed; maintain the shortest path to implementation and do not violate the first requirement.
-- No solutions beyond the reqirements I have provided are allowed, such as fallback or degradtion solutions.
+- No solutions beyond the requirements I have provided are allowed, such as fallback or degradation solutions.
 - You must ensure the logical correctness of the solution; it must undergo end-to-end logical verification.
