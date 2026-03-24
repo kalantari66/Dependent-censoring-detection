@@ -6,7 +6,7 @@ from scipy.stats import levy_stable, norm
 
 
 def dgp(
-    kind: Literal["copula_direct", "frailty_discrete", "frailty_continuous"] = "copula_direct",
+    kind: Literal["copula", "frailty_discrete", "frailty_continuous"] = "copula",
     n_subjects: int = 1000,
     n_features: int = 3,
     seed: int = 42,
@@ -28,7 +28,7 @@ def dgp(
       - event
       - x0..x{p-1} strata covariates
     """
-    if kind == "copula_direct":
+    if kind == "copula":
         return _generate_direct_dependence_data(
             n_subjects=n_subjects,
             n_features=n_features,
