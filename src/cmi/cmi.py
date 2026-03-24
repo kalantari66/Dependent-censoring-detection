@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sksurv.ensemble import RandomSurvivalForest
+from sksurv.util import Surv
 
 
 def detect_dependent_censoring(
@@ -224,11 +225,8 @@ def _generate_null_nonparametric(
     if rsf_params is None:
         rsf_params = {"n_estimators": 100, "min_samples_leaf": 15, "n_jobs": -1}
 
-    def structured_y(time_col: pd.Series, event_col: pd.Series) -> np.ndarray:
-        return np.array(list(zip(event_col.astype(bool), time_col.astype(float))), dtype=[("status", bool), ("time", float)])
-
-    y_E = structured_y(df[t_col], df[e_col])
-    y_C = structured_y(df[t_col], 1 - df[e_col])
+    y_E = Surv.from_arrays(time=df[t_col], event=df[e_col])
+    y_C = Surv.from_arrays(time=df[t_col], event=1 - df[e_col])
 
     model_E = RandomSurvivalForest(**rsf_params, random_state=int(rng.integers(1_000_000)))
     model_C = RandomSurvivalForest(**rsf_params, random_state=int(rng.integers(1_000_000)))
