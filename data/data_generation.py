@@ -136,7 +136,7 @@ def _generate_direct_dependence_data(
     event_params: Optional[Dict[str, Any]] = None,
     censoring_params: Optional[Dict[str, Any]] = None,
     seed: int = 42,
-    eps = 1e-12
+    eps: float = 1e-12
 ) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     X = rng.integers(0, 2, size=(n_subjects, n_features))
