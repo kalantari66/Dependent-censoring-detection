@@ -91,6 +91,9 @@ def resolve_dataset(
             n_features=4,
             copula=copula_type,
             seed=seed,
+            theta=3,
+            alpha_E=4,
+            alpha_C=4,
         )
         dataset_label = f"SYNTH_{kind}"
     elif dataset in SEMI_SYNTH_DATASETS:
