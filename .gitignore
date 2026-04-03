@@ -11,3 +11,4 @@ dist/
 *.h5
 *.sh
 results/
+from_hamid/
