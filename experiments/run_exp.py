@@ -96,6 +96,8 @@ def resolve_dataset(
             alpha_C=4,
         )
         dataset_label = f"SYNTH_{kind}"
+        if dependency_kind == "copula":
+            dataset_label += f"_{copula_type}"
     elif dataset in SEMI_SYNTH_DATASETS:
         dataset_label = f"{dataset}_{dependency_kind}"
         if dependency_kind == "copula":
