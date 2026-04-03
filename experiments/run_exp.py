@@ -167,7 +167,11 @@ def main() -> None:
         "--feature-kind",
         choices=("discrete", "continuous"),
         default="discrete",
-        help="Kind of features to use for synthetic data generation.",
+        help=(
+            "Kind of features to use for fully synthetic data generation; "
+            "this only affects --dataset SYNTH when --dependency-kind frailty "
+            "and is ignored otherwise."
+        ),
     )
     parser.add_argument("--n-trials", type=int, default=10, help="Number of hyperparameter combinations to sample.")
     parser.add_argument("--seed", type=int, default=2026, help="Seed for hyperparameter sampling and DGP.")
