@@ -102,7 +102,7 @@ from cmi import detect_dependent_censoring
 from data import dgp
 
 df = dgp(
-    kind="copula_direct",
+    kind="copula",
     n_subjects=500,
     n_features=3,
     copula="clayton",
@@ -174,7 +174,7 @@ float  → Global p-value
 from data import dgp
 
 dgp(
-    kind="copula_direct",
+    kind="copula",
     n_subjects=1000,
     n_features=3,
     seed=42,
@@ -184,7 +184,7 @@ dgp(
 
 Available generator types:
 
-- `"copula_direct"`  
+- `"copula"`  
 - `"frailty_discrete"`  
 - `"frailty_continuous"`  
 

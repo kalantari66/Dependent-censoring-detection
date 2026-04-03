@@ -9,11 +9,11 @@ import pandas as pd
 from tqdm import tqdm
 
 from cmi import detect_dependent_censoring, preprocess_dataset
-from data import load_real_data, semiDGP
+from data import dgp, load_real_data, semiDGP
 
 REAL_DATASETS = {"METABRIC", "NACD", "GBSG2", "NWTCO", "NPC", "AIDS", "HFCR", "leukemia", "Rossi", "COVID"}
 SEMI_SYNTH_DATASETS = {f"SEMI_{data}" for data in REAL_DATASETS}
-SYNTH_DATASETS = {"SYNTH_1", "SYNTH_2"} # placeholders
+
 
 def select_feature_by_strata_size(
         df: pd.DataFrame, 
@@ -74,14 +74,30 @@ def resolve_dataset(
     dataset: str,
     dependency_kind: str,
     copula_type: str,
+    feature_kind: str,
     seed: int,
 ) -> tuple[str, Path, pd.DataFrame]:
     """Resolve the experiment dataset and return its label, config, and frame."""
     # TODO: right now all the experiments use the same config file.
     config_path = Path("config/real_exp.json")
 
-    if dataset in SYNTH_DATASETS:
-        raise NotImplementedError("Fully synthetic datasets are not yet implemented in this script.")
+    if dataset == "SYNTH":
+        kind = dependency_kind
+        if kind == "frailty":
+            kind += f"_{feature_kind}"
+        raw_df = dgp(
+            kind=kind,
+            n_subjects=1000,
+            n_features=4,
+            copula=copula_type,
+            seed=seed,
+            theta=3,
+            alpha_E=4,
+            alpha_C=4,
+        )
+        dataset_label = f"SYNTH_{kind}"
+        if dependency_kind == "copula":
+            dataset_label += f"_{copula_type}"
     elif dataset in SEMI_SYNTH_DATASETS:
         dataset_label = f"{dataset}_{dependency_kind}"
         if dependency_kind == "copula":
@@ -100,6 +116,31 @@ def resolve_dataset(
         raise ValueError(f"Unsupported dataset: {dataset}")
     
     return dataset_label, config_path, raw_df
+
+
+def prepare_experiment_dataset(
+    raw_df: pd.DataFrame,
+    config: Dict[str, Any],
+    dataset: str,
+) -> tuple[pd.DataFrame, List[str]]:
+    """Prepare the experiment dataset and return the feature columns used downstream."""
+    if dataset != "SYNTH":
+        df, features_all = preprocess_dataset(
+            raw_df=raw_df,
+            bins=config["preprocessing"]["discretization_bins"],
+            max_features=config["preprocessing"]["max_selected_features"],
+            event_col="event",
+            time_col="time",
+            feature_exclude=None
+        )
+        return df, features_all
+
+    feature_cols = [
+        col for col in raw_df.columns
+        if col not in {"time", "event"} and not col.endswith("_continuous")
+    ]
+    df = raw_df[["time", "event"] + feature_cols].copy()
+    return df, feature_cols
 
 
 def main() -> None:
@@ -122,6 +163,16 @@ def main() -> None:
         default="clayton",
         help="Type of copula to use for semi-synthetic dependence construction.",
     )
+    parser.add_argument(
+        "--feature-kind",
+        choices=("discrete", "continuous"),
+        default="discrete",
+        help=(
+            "Kind of features to use for fully synthetic data generation; "
+            "this only affects --dataset SYNTH when --dependency-kind frailty "
+            "and is ignored otherwise."
+        ),
+    )
     parser.add_argument("--n-trials", type=int, default=10, help="Number of hyperparameter combinations to sample.")
     parser.add_argument("--seed", type=int, default=2026, help="Seed for hyperparameter sampling and DGP.")
     args = parser.parse_args()
@@ -130,6 +181,7 @@ def main() -> None:
         dataset=args.dataset,
         dependency_kind=args.dependency_kind,
         copula_type=args.copula_type,
+        feature_kind=args.feature_kind,
         seed=args.seed,
     )
 
@@ -138,16 +190,13 @@ def main() -> None:
 
     sampled_hyperparameters = sample_hyperparameters(config=config, n_trials=args.n_trials, seed=args.seed)
 
-    df, features_all = preprocess_dataset(
+    df, features_all = prepare_experiment_dataset(
         raw_df=raw_df,
-        bins=config["preprocessing"]["discretization_bins"],
-        max_features=config["preprocessing"]["max_selected_features"],
-        event_col="event",
-        time_col="time",
-        feature_exclude=None
+        config=config,
+        dataset=args.dataset,
     )
 
-    msg = f"Running {args.n_trials} trials on {dataset_label} with {len(df)} samples and {len(features_all)} covariates (after preprocessing)."
+    msg = f"Running {args.n_trials} trials on {dataset_label} with {len(df)} samples and {len(features_all)} covariates."
     # TODO: add parallel processing
     records: List[Dict[str, Any]] = []
     for run_id, hyperparameters in enumerate(tqdm(sampled_hyperparameters, desc=msg), start=1):
@@ -180,7 +229,7 @@ def main() -> None:
 
         if n_valid_strata == 0:
             row["status"] = "error"
-            row["error"] = "No strata meet min_stratum_size after preprocessing."
+            row["error"] = "No strata meet min_stratum_size after dataset preparation."
             records.append(row)
             continue
 
