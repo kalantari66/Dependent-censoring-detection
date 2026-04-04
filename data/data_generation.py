@@ -295,16 +295,8 @@ def generate_copula_continuous_features(
     continuous_cols = {f'x{i}_continuous': X_continuous[:, i] for i in range(n_features)}
 
     df = pd.DataFrame({**binned_cols, **continuous_cols})
-    df['subject_id']      = np.arange(n_subjects)
-    df['observed_time']   = observed_time
-    df['event_indicator'] = event_indicator
-    df['true_event_time'] = T_E
-    df['censoring_time']  = T_C
-
-    # Reorder columns for clarity
-    feature_cols = [col for col in df.columns if col.startswith('x')]
-    other_cols = [col for col in df.columns if not col.startswith('x')]
-    df = df[other_cols + sorted(feature_cols)]
+    df['time']   = observed_time
+    df['event'] = event_indicator
 
     return df
 

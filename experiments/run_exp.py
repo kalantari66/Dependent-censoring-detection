@@ -82,9 +82,7 @@ def resolve_dataset(
     config_path = Path("config/real_exp.json")
 
     if dataset == "SYNTH":
-        kind = dependency_kind
-        if kind == "frailty":
-            kind += f"_{feature_kind}"
+        kind = f"{dependency_kind}_{feature_kind}"
         raw_df = dgp(
             kind=kind,
             n_subjects=1000,
@@ -122,7 +120,7 @@ def prepare_experiment_dataset(
     raw_df: pd.DataFrame,
     config: Dict[str, Any],
     dataset: str,
-) -> tuple[pd.DataFrame, List[str]]:
+) -> tuple[pd.DataFrame, List[str], str, str]:
     """Prepare the experiment dataset and return the feature columns used downstream."""
     if dataset != "SYNTH":
         df, features_all = preprocess_dataset(
@@ -133,14 +131,16 @@ def prepare_experiment_dataset(
             time_col="time",
             feature_exclude=None
         )
-        return df, features_all
+        return df, features_all, "time", "event"
 
     feature_cols = [
         col for col in raw_df.columns
-        if col not in {"time", "event"} and not col.endswith("_continuous")
+        if col.startswith("x") and not col.endswith("_continuous")
     ]
+    if not feature_cols:
+        raise ValueError("Synthetic dataset does not include usable strata columns.")
     df = raw_df[["time", "event"] + feature_cols].copy()
-    return df, feature_cols
+    return df, feature_cols, "time", "event"
 
 
 def main() -> None:
@@ -169,8 +169,7 @@ def main() -> None:
         default="discrete",
         help=(
             "Kind of features to use for fully synthetic data generation; "
-            "this only affects --dataset SYNTH when --dependency-kind frailty "
-            "and is ignored otherwise."
+            "this affects --dataset SYNTH for both copula and frailty dependence."
         ),
     )
     parser.add_argument("--n-trials", type=int, default=10, help="Number of hyperparameter combinations to sample.")
@@ -190,7 +189,7 @@ def main() -> None:
 
     sampled_hyperparameters = sample_hyperparameters(config=config, n_trials=args.n_trials, seed=args.seed)
 
-    df, features_all = prepare_experiment_dataset(
+    df, features_all, time_col, event_col = prepare_experiment_dataset(
         raw_df=raw_df,
         config=config,
         dataset=args.dataset,
@@ -233,17 +232,17 @@ def main() -> None:
             records.append(row)
             continue
 
-        run_df = df[["time", "event"] + features_select].copy()
+        run_df = df[[time_col, event_col] + features_select].copy()
         try:
             test_details = detect_dependent_censoring(
                 run_df,
                 quantiles=hyperparameters["quantiles"],
+                t_col=time_col,
+                e_col=event_col,
+                x_cols=features_select,
                 B=hyperparameters["B"],
                 seed=hyperparameters["seed"],
                 min_stratum_size=hyperparameters["min_stratum_size"],
-                t_col="time",
-                e_col="event",
-                x_cols=features_select,
                 return_details=True,
             )
             row["p_value"] = test_details["final_p_value"]
