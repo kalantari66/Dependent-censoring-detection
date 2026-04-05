@@ -6,11 +6,12 @@ from sklearn.preprocessing import StandardScaler
 
 from cmi.DVFM import DVFM, train_dvfm
 
+
 class SurvivalDataset(Dataset):
     def __init__(self, X, time, event):
-        self.X = torch.FloatTensor(X)
-        self.time = torch.FloatTensor(time)
-        self.event = torch.FloatTensor(event)
+        self.X = torch.tensor(X, dtype=torch.float32)
+        self.time = torch.tensor(time, dtype=torch.float32)
+        self.event = torch.tensor(event, dtype=torch.float32)
 
     def __len__(self):
         return len(self.X)
@@ -55,9 +56,9 @@ def prepare_null_nonparametric(df, t_col, e_col, x_cols, rng, rsf_params=None):
     E_full, C_full = np.zeros(n), np.zeros(n)
     
     with torch.no_grad():
-        x_t = torch.FloatTensor(x_features).to(device)
-        t_t = torch.FloatTensor(df[t_col].values / time_scale).to(device)
-        e_t = torch.FloatTensor(df[e_col].values).to(device)
+        x_t = torch.tensor(x_features, dtype=torch.float32).to(device)
+        t_t = torch.tensor(df[t_col].values / time_scale, dtype=torch.float32).to(device)
+        e_t = torch.tensor(df[e_col].values, dtype=torch.float32).to(device)
         mu, logvar = model.encoder(x_t, t_t, e_t)
         
         for i in range(n):
