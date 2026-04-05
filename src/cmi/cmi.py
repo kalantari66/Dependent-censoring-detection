@@ -237,7 +237,6 @@ def stratified_fisher_test_standardized_strata(
         generate_null_nonparametric_fast(null_pre, t_col=t_col, e_col=e_col, rng=rng)
         for _ in range(B)
     ]
-    print("...null distribution generation complete.")
 
     # Dictionary to store results for each stratum
     per_s: Dict[Tuple, Dict[str, Any]] = {}
