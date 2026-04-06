@@ -44,7 +44,7 @@ def detect_dependent_censoring(
 
     Data requirements:
       - df[t_col] numeric, df[e_col] in {0,1}
-      - covariates: by default all columns starting with 'x' are used as strata
+      - covariates: by default all columns except t_col and e_col are used as strata
     """
     df = df.copy()
 
@@ -268,7 +268,8 @@ def stratified_fisher_test_standardized_strata(
         sigma_all = null_mat.std(axis=0)
         valid_idx = np.where(sigma_all > variance_threshold)[0]
         if len(valid_idx) == 0:
-            warn(f"Stratum {s} has no stable time points after filtering. Excluding from Fisher combination.")
+            if verbose:
+                warn(f"Stratum {s} has no stable time points after filtering. Excluding from Fisher combination.")
             continue
 
         null_stable = null_mat[:, valid_idx]
@@ -292,7 +293,8 @@ def stratified_fisher_test_standardized_strata(
 
     # Fisher combination logic (now correct)
     if not per_s:
-        warn("Warning: No strata remained after stability checks. Cannot compute a valid p-value.")
+        if verbose:
+            warn("Warning: No strata remained after stability checks. Cannot compute a valid p-value.")
         return {"final_p_value": np.nan, "notes": "No stable strata found."}
 
     if verbose:
