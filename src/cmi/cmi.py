@@ -13,13 +13,13 @@ from cmi.null_sampling import prepare_null_nonparametric, generate_null_nonparam
 def detect_dependent_censoring(
     df: pd.DataFrame,
     quantiles: Iterable[float],
-    t_col: str,
-    e_col: str,
-    x_cols: Optional[List[str]] = None,
     B: int = 500,
     seed: int = 123,
     min_stratum_size: int = 30,
     variance_threshold: float = 1e-9,   # TODO: how to choose this variance threshold? Hamid uses 0.001
+    t_col: str = "observed_time",
+    e_col: str = "event_indicator",
+    x_cols: Optional[List[str]] = None,
     return_details: bool = False,
     verbose: bool = False,
 ) -> Union[float, Dict[str, Any]]:
@@ -29,22 +29,23 @@ def detect_dependent_censoring(
     Inputs:
         df: pandas DataFrame containing the data
         quantiles: iterable of quantiles to use for time points
-        t_col: column name for observed times
-        e_col: column name for event indicators (1=event, 0=censoring)
-        x_cols: list of column names to use as covariates for stratification (if None, uses all columns except t_col and e_col)
         B: number of bootstrap samples
         seed: random seed for reproducibility
         min_stratum_size: minimum size of each stratum
         variance_threshold: threshold for variance in Fisher's exact test
+        t_col: column name for observed times; defaults to "observed_time"
+        e_col: column name for event indicators (1=event, 0=censoring); defaults to "event_indicator"
+        x_cols: list of column names to use as covariates for stratification (if None, uses all columns except t_col and e_col)
         return_details: whether to return detailed results or just the final p-value
         verbose: whether to print detailed information during computation
 
     Output:
-      global p-value (or dict with details if return_details=True)
+        global p-value (or dict with details if return_details=True)
 
     Data requirements:
-      - df[t_col] numeric, df[e_col] in {0,1}
-      - covariates: by default all columns except t_col and e_col are used as strata
+        - by default the function expects "observed_time" and "event_indicator"
+        - use t_col/e_col to work with other naming conventions such as "time"/"event"
+        - covariates: by default all columns except t_col and e_col are used as strata
     """
     df = df.copy()
 
