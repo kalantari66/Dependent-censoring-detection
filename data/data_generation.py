@@ -6,7 +6,7 @@ from scipy.stats import levy_stable, norm
 
 
 def dgp(
-    kind: Literal["copula", "frailty_discrete", "frailty_continuous"] = "copula",
+    kind: Literal["copula_discrete", "copula_continuous", "frailty_discrete", "frailty_continuous"] = "copula_discrete",
     n_subjects: int = 1000,
     n_features: int = 3,
     seed: int = 42,

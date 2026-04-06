@@ -76,7 +76,7 @@ def resolve_dataset(
     copula_type: str,
     feature_kind: str,
     seed: int,
-    gamma: float,
+    theta: float,
     alpha: float,
 ) -> tuple[str, Path, pd.DataFrame]:
     """Resolve the experiment dataset and return its label, config, and frame."""
@@ -91,24 +91,26 @@ def resolve_dataset(
             n_features=4,
             copula=copula_type,
             seed=seed,
-            theta=3,
-            gamma=gamma,
+            theta=theta,
             alpha_E=alpha,
             alpha_C=alpha,
         )
         dataset_label = f"SYNTH_{kind}"
         if dependency_kind == "copula":
-            dataset_label += f"_{copula_type}"
+            dataset_label += f"_{copula_type}_theta{theta}"
+        elif dependency_kind == "frailty":
+            dataset_label += f"_alpha{alpha}"
     elif dataset in SEMI_SYNTH_DATASETS:
         dataset_label = f"{dataset}_{dependency_kind}"
         if dependency_kind == "copula":
-            dataset_label += f"_{copula_type}"
+            dataset_label += f"_{copula_type}_theta{theta}"
         raw_df = semiDGP(
             dataset=dataset.split("_", 1)[1], # extract the real dataset name from the SEMI_ prefix
             kind=dependency_kind,
             model="coxph",
             seed=seed,
             copula=copula_type,
+            theta=theta,
         )
     elif dataset in REAL_DATASETS:
         raw_df = load_real_data(data_name=dataset, onehot_encode=False)
@@ -176,10 +178,11 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--gamma",
+        "--theta",
         type=float,
-        default=0.0,
-        help="Gamma parameter passed to dgp() for --dataset SYNTH.",
+        default=3.0,
+        help="Theta parameter controling the strength of dependence for copula-based data " \
+        "generation; ignored for frailty-based generation.",
     )
     parser.add_argument(
         "--alpha",
@@ -197,7 +200,7 @@ def main() -> None:
         copula_type=args.copula_type,
         feature_kind=args.feature_kind,
         seed=args.seed,
-        gamma=args.gamma,
+        theta=args.theta,
         alpha=args.alpha,
     )
 
