@@ -2,11 +2,13 @@
 
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from warnings import warn
 
 import numpy as np
 import pandas as pd
 
 from cmi.null_sampling import prepare_null_nonparametric, generate_null_nonparametric_fast
+
 
 def detect_dependent_censoring(
     df: pd.DataFrame,
@@ -19,17 +21,23 @@ def detect_dependent_censoring(
     min_stratum_size: int = 30,
     variance_threshold: float = 1e-9,   # TODO: how to choose this variance threshold? Hamid uses 0.001
     return_details: bool = False,
+    verbose: bool = False,
 ) -> Union[float, Dict[str, Any]]:
     """
     Public function for dependent censoring detection.
 
     Inputs:
-      df: pandas DataFrame containing the data
-      quantiles: iterable of quantiles to use for time points
-      B: number of bootstrap samples
-      seed: random seed for reproducibility
-      min_stratum_size: minimum size of each stratum
-      variance_threshold: threshold for variance in Fisher's exact test
+        df: pandas DataFrame containing the data
+        quantiles: iterable of quantiles to use for time points
+        t_col: column name for observed times
+        e_col: column name for event indicators (1=event, 0=censoring)
+        x_cols: list of column names to use as covariates for stratification (if None, uses all columns except t_col and e_col)
+        B: number of bootstrap samples
+        seed: random seed for reproducibility
+        min_stratum_size: minimum size of each stratum
+        variance_threshold: threshold for variance in Fisher's exact test
+        return_details: whether to return detailed results or just the final p-value
+        verbose: whether to print detailed information during computation
 
     Output:
       global p-value (or dict with details if return_details=True)
@@ -44,7 +52,8 @@ def detect_dependent_censoring(
         x_cols = [c for c in df.columns if c not in {t_col, e_col}]
         if not x_cols:
             raise ValueError("No covariate columns found.")
-        print(f"Using all columns except '{t_col}' and '{e_col}' as features: {x_cols}")
+        if verbose:
+            print(f"Using all columns except '{t_col}' and '{e_col}' as features: {x_cols}")
 
 
     validate_data(df, t_col, e_col, x_cols)
@@ -65,6 +74,7 @@ def detect_dependent_censoring(
         variance_threshold=variance_threshold,
         t_col=t_col,
         e_col=e_col,
+        verbose=verbose,
     )
 
     return res if return_details else float(res["final_p_value"])
@@ -189,6 +199,7 @@ def stratified_fisher_test_standardized_strata(
     variance_threshold: float,
     t_col: str,
     e_col: str,
+    verbose: bool = False,
 ) -> Dict[str, Any]:
     """
     Performs a stratified permutation test using Fisher's method with a robust,
@@ -210,6 +221,7 @@ def stratified_fisher_test_standardized_strata(
     - variance_threshold: minimum variance threshold for including a stratum in the Fisher combination
     - t_col: column name for observed times
     - e_col: column name for event indicators
+    - verbose: whether to print progress and warnings
 
     Output:
     - dict with final p-value, observed Fisher statistic, per-stratum p-values, and excluded strata
@@ -256,7 +268,7 @@ def stratified_fisher_test_standardized_strata(
         sigma_all = null_mat.std(axis=0)
         valid_idx = np.where(sigma_all > variance_threshold)[0]
         if len(valid_idx) == 0:
-            print(f"Warning: Stratum {s} had no stable time points. Skipping.")
+            warn(f"Stratum {s} has no stable time points after filtering. Excluding from Fisher combination.")
             continue
 
         null_stable = null_mat[:, valid_idx]
@@ -280,10 +292,11 @@ def stratified_fisher_test_standardized_strata(
 
     # Fisher combination logic (now correct)
     if not per_s:
-        print("Warning: No strata remained after stability checks. Cannot compute a valid p-value.")
+        warn("Warning: No strata remained after stability checks. Cannot compute a valid p-value.")
         return {"final_p_value": np.nan, "notes": "No stable strata found."}
 
-    print(f"Using {len(per_s)} out of {len(unique_strata)} strata for final test.")
+    if verbose:
+        print(f"Using {len(per_s)} out of {len(unique_strata)} strata for final test.")
 
     stable_p = np.array([v["p_value"] for v in per_s.values()])
     F_obs = float(-2 * np.sum(np.log(stable_p + 1e-12)))
