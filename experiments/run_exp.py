@@ -181,7 +181,7 @@ def main() -> None:
         "--theta",
         type=float,
         default=3.0,
-        help="Theta parameter controling the strength of dependence for copula-based data " \
+        help="Theta parameter controlling the strength of dependence for copula-based data " \
         "generation; ignored for frailty-based generation.",
     )
     parser.add_argument(
