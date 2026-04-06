@@ -76,6 +76,8 @@ def resolve_dataset(
     copula_type: str,
     feature_kind: str,
     seed: int,
+    gamma: float,
+    alpha: float,
 ) -> tuple[str, Path, pd.DataFrame]:
     """Resolve the experiment dataset and return its label, config, and frame."""
     # TODO: right now all the experiments use the same config file.
@@ -90,8 +92,9 @@ def resolve_dataset(
             copula=copula_type,
             seed=seed,
             theta=3,
-            alpha_E=4,
-            alpha_C=4,
+            gamma=gamma,
+            alpha_E=alpha,
+            alpha_C=alpha,
         )
         dataset_label = f"SYNTH_{kind}"
         if dependency_kind == "copula":
@@ -172,6 +175,18 @@ def main() -> None:
             "this affects --dataset SYNTH for both copula and frailty dependence."
         ),
     )
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=0.0,
+        help="Gamma parameter passed to dgp() for --dataset SYNTH.",
+    )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=4.0,
+        help="Alpha value used for both alpha_E and alpha_C in dgp() for --dataset SYNTH.",
+    )
     parser.add_argument("--n-trials", type=int, default=10, help="Number of hyperparameter combinations to sample.")
     parser.add_argument("--seed", type=int, default=2026, help="Seed for hyperparameter sampling and DGP.")
     args = parser.parse_args()
@@ -182,6 +197,8 @@ def main() -> None:
         copula_type=args.copula_type,
         feature_kind=args.feature_kind,
         seed=args.seed,
+        gamma=args.gamma,
+        alpha=args.alpha,
     )
 
     with config_path.open("r", encoding="utf-8") as f:
