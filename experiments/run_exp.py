@@ -70,6 +70,11 @@ def sample_hyperparameters(
     return sampled
 
 
+def format_strength_for_label(value: float) -> str:
+    """Return a file-name-friendly representation of a numeric dependence strength."""
+    return f"{value:g}".replace("-", "neg").replace("+", "").replace(".", "p")
+
+
 def resolve_dataset(
     dataset: str,
     dependency_kind: str,
@@ -97,9 +102,9 @@ def resolve_dataset(
         )
         dataset_label = f"SYNTH_{kind}"
         if dependency_kind == "copula":
-            dataset_label += f"_{copula_type}_theta{theta}"
-        elif dependency_kind == "frailty":
-            dataset_label += f"_alpha{alpha}"
+            dataset_label += f"_{copula_type}_theta{format_strength_for_label(theta)}"
+        else:
+            dataset_label += f"_alpha{format_strength_for_label(alpha)}"
     elif dataset in SEMI_SYNTH_DATASETS:
         dataset_label = f"{dataset}_{dependency_kind}"
         if dependency_kind == "copula":
@@ -160,13 +165,13 @@ def main() -> None:
         "--dependency-kind",
         choices=("copula", "frailty"),
         default="frailty",
-        help="Semi-synthetic dependence construction used when the selected --dataset is semi-synthetic (SEMI_*).",
+        help="Dependence construction used when the selected --dataset is synthetic (SYNTH) or semi-synthetic (SEMI_*).",
     )
     parser.add_argument(
         "--copula-type",
         choices=("gaussian", "clayton", "gumbel", "frank"),
         default="clayton",
-        help="Type of copula to use for semi-synthetic dependence construction.",
+        help="Type of copula to use for synthetic or semi-synthetic copula dependence construction.",
     )
     parser.add_argument(
         "--feature-kind",
@@ -181,18 +186,28 @@ def main() -> None:
         "--theta",
         type=float,
         default=3.0,
-        help="Theta parameter controlling the strength of dependence for copula-based data " \
-        "generation; ignored for frailty-based generation.",
+        help=(
+            "Theta parameter controlling the strength of dependence for copula-based data generation; "
+            "ignored for frailty-based generation."
+        ),
     )
     parser.add_argument(
         "--alpha",
         type=float,
         default=4.0,
-        help="Alpha value used for both alpha_E and alpha_C in dgp() for --dataset SYNTH.",
+        help=(
+            "Frailty dependence strength for --dataset SYNTH when --dependency-kind frailty; "
+            "the same value is used for alpha_E and alpha_C."
+        ),
     )
     parser.add_argument("--n-trials", type=int, default=10, help="Number of hyperparameter combinations to sample.")
     parser.add_argument("--seed", type=int, default=2026, help="Seed for hyperparameter sampling and DGP.")
     args = parser.parse_args()
+
+    if args.dataset == "SYNTH" and args.dependency_kind == "copula" and not np.isfinite(args.theta):
+        parser.error("--theta must be finite for synthetic copula data.")
+    if args.dataset == "SYNTH" and args.dependency_kind == "frailty" and not np.isfinite(args.alpha):
+        parser.error("--alpha must be finite for synthetic frailty data.")
 
     dataset_label, config_path, raw_df = resolve_dataset(
         dataset=args.dataset,

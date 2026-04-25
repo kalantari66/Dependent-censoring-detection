@@ -32,7 +32,7 @@ def semiDGP(
         seed: Random seed for model fitting and latent time sampling.
         copula: Copula family used when ``kind="copula"``.
         theta: Copula parameter used when ``kind="copula"``.
-        drop_cov: Number of top-ranked raw covariates to drop per model when
+        drop_cov: Number of common event/censoring covariates to drop when
             ``kind="frailty"``.
         tail_strategy: Extrapolation rule used beyond the support of predicted
             survival curves.
@@ -270,14 +270,14 @@ def _sample_times_from_copula_survivals(
     )
 
 
-def _rank_raw_features(
+def _compute_raw_feature_importances(
     fitted_model: Any,
     X: pd.DataFrame,
     T: pd.Series,
     E: pd.Series,
     seed: int,
-) -> list[str]:
-    """Rank raw features by aggregated model importance."""
+) -> pd.Series:
+    """Compute non-negative raw feature importances for a fitted survival model."""
     if isinstance(fitted_model, CoxPHSurvivalAnalysis):
         importances = pd.Series(np.abs(fitted_model.coef_), index=X.columns, dtype=float)
     elif isinstance(fitted_model, RandomSurvivalForest):
@@ -294,8 +294,43 @@ def _rank_raw_features(
     else:
         raise ValueError(f"Unsupported model type for feature importance: {type(fitted_model)}")
 
-    ranked = importances.sort_values(ascending=False, kind="stable")
-    return ranked.index.tolist()
+    return importances
+
+
+def _normalize_importances(importances: pd.Series) -> pd.Series:
+    """Normalize importances by the largest positive importance."""
+    max_importance = importances.max()
+    if max_importance <= 0:
+        return pd.Series(0.0, index=importances.index)
+    return importances / max_importance
+
+
+def _select_common_features_by_importance(
+    event_importances: pd.Series,
+    censoring_importances: pd.Series,
+    drop_cov: int,
+) -> list[str]:
+    """Select features with the highest positive bottleneck joint importance."""
+    if drop_cov < 0:
+        raise ValueError("drop_cov must be non-negative.")
+    if drop_cov == 0:
+        return []
+    if not event_importances.index.equals(censoring_importances.index):
+        raise ValueError("Event and censoring importances must have the same feature index.")
+
+    event_normalized = _normalize_importances(event_importances)
+    censoring_normalized = _normalize_importances(censoring_importances)
+    joint_scores = pd.Series(
+        np.minimum(event_normalized.to_numpy(), censoring_normalized.to_numpy()),
+        index=event_importances.index,
+    )
+    candidates = joint_scores[joint_scores > 0]
+    if len(candidates) < drop_cov:
+        raise ValueError(
+            f"Fewer than {drop_cov} covariates have positive importance for both event and censoring models."
+        )
+
+    return candidates.sort_values(ascending=False, kind="stable").index[:drop_cov].tolist()
 
 
 def _select_features_to_drop(
@@ -307,19 +342,25 @@ def _select_features_to_drop(
     drop_cov: int,
     seed: int,
 ) -> set[str]:
-    """Select the union of top-ranked event and censoring features to hide."""
-    ranked_event = _rank_raw_features(
+    """Select top common event/censoring features to hide."""
+    event_importances = _compute_raw_feature_importances(
         fitted_model=event_model,
         X=X,
         T=T,
         E=E,
         seed=seed,
     )
-    ranked_censor = _rank_raw_features(
+    censoring_importances = _compute_raw_feature_importances(
         fitted_model=censoring_model,
         X=X,
         T=T,
         E=1 - E,
         seed=seed,
     )
-    return set(ranked_event[:drop_cov]) | set(ranked_censor[:drop_cov])
+    return set(
+        _select_common_features_by_importance(
+            event_importances=event_importances,
+            censoring_importances=censoring_importances,
+            drop_cov=drop_cov,
+        )
+    )
