@@ -12,3 +12,4 @@ dist/
 *.sh
 results/
 from_hamid/
+logs/

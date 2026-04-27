@@ -83,6 +83,7 @@ def resolve_dataset(
     seed: int,
     theta: float,
     alpha: float,
+    drop_cov: int = 0,
 ) -> tuple[str, Path, pd.DataFrame]:
     """Resolve the experiment dataset and return its label, config, and frame."""
     # TODO: right now all the experiments use the same config file.
@@ -116,6 +117,7 @@ def resolve_dataset(
             seed=seed,
             copula=copula_type,
             theta=theta,
+            drop_cov=drop_cov,
         )
     elif dataset in REAL_DATASETS:
         raw_df = load_real_data(data_name=dataset, onehot_encode=False)
@@ -202,6 +204,7 @@ def main() -> None:
     )
     parser.add_argument("--n-trials", type=int, default=10, help="Number of hyperparameter combinations to sample.")
     parser.add_argument("--seed", type=int, default=2026, help="Seed for hyperparameter sampling and DGP.")
+    parser.add_argument("--drop-cov", type=int, default=0, help="Number of covariates to drop when generating semi-synthetic data.")
     args = parser.parse_args()
 
     if args.dataset == "SYNTH" and args.dependency_kind == "copula" and not np.isfinite(args.theta):
@@ -217,6 +220,7 @@ def main() -> None:
         seed=args.seed,
         theta=args.theta,
         alpha=args.alpha,
+        drop_cov=args.drop_cov,
     )
 
     with config_path.open("r", encoding="utf-8") as f:
