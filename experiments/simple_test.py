@@ -4,7 +4,7 @@ from data import dgp
 
 def main():
     df = dgp(
-        kind="copula",
+        kind="copula_discrete",
         n_subjects=500,
         n_features=3,
         copula="clayton",

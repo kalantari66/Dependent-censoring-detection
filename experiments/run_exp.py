@@ -70,44 +70,54 @@ def sample_hyperparameters(
     return sampled
 
 
+def format_strength_for_label(value: float) -> str:
+    """Return a file-name-friendly representation of a numeric dependence strength."""
+    return f"{value:g}".replace("-", "neg").replace("+", "").replace(".", "p")
+
+
 def resolve_dataset(
     dataset: str,
     dependency_kind: str,
     copula_type: str,
     feature_kind: str,
     seed: int,
+    theta: float,
+    alpha: float,
+    drop_cov: int = 0,
 ) -> tuple[str, Path, pd.DataFrame]:
     """Resolve the experiment dataset and return its label, config, and frame."""
     # TODO: right now all the experiments use the same config file.
     config_path = Path("config/real_exp.json")
 
     if dataset == "SYNTH":
-        kind = dependency_kind
-        if kind == "frailty":
-            kind += f"_{feature_kind}"
+        kind = f"{dependency_kind}_{feature_kind}"
         raw_df = dgp(
             kind=kind,
             n_subjects=1000,
             n_features=4,
             copula=copula_type,
             seed=seed,
-            theta=3,
-            alpha_E=4,
-            alpha_C=4,
+            theta=theta,
+            alpha_E=alpha,
+            alpha_C=alpha,
         )
         dataset_label = f"SYNTH_{kind}"
         if dependency_kind == "copula":
-            dataset_label += f"_{copula_type}"
+            dataset_label += f"_{copula_type}_theta{format_strength_for_label(theta)}"
+        else:
+            dataset_label += f"_alpha{format_strength_for_label(alpha)}"
     elif dataset in SEMI_SYNTH_DATASETS:
         dataset_label = f"{dataset}_{dependency_kind}"
         if dependency_kind == "copula":
-            dataset_label += f"_{copula_type}"
+            dataset_label += f"_{copula_type}_theta{theta}"
         raw_df = semiDGP(
             dataset=dataset.split("_", 1)[1], # extract the real dataset name from the SEMI_ prefix
             kind=dependency_kind,
             model="coxph",
             seed=seed,
             copula=copula_type,
+            theta=theta,
+            drop_cov=drop_cov,
         )
     elif dataset in REAL_DATASETS:
         raw_df = load_real_data(data_name=dataset, onehot_encode=False)
@@ -122,7 +132,7 @@ def prepare_experiment_dataset(
     raw_df: pd.DataFrame,
     config: Dict[str, Any],
     dataset: str,
-) -> tuple[pd.DataFrame, List[str]]:
+) -> tuple[pd.DataFrame, List[str], str, str]:
     """Prepare the experiment dataset and return the feature columns used downstream."""
     if dataset != "SYNTH":
         df, features_all = preprocess_dataset(
@@ -133,14 +143,16 @@ def prepare_experiment_dataset(
             time_col="time",
             feature_exclude=None
         )
-        return df, features_all
+        return df, features_all, "time", "event"
 
     feature_cols = [
         col for col in raw_df.columns
-        if col not in {"time", "event"} and not col.endswith("_continuous")
+        if col.startswith("x") and not col.endswith("_continuous")
     ]
+    if not feature_cols:
+        raise ValueError("Synthetic dataset does not include usable strata columns.")
     df = raw_df[["time", "event"] + feature_cols].copy()
-    return df, feature_cols
+    return df, feature_cols, "time", "event"
 
 
 def main() -> None:
@@ -155,13 +167,13 @@ def main() -> None:
         "--dependency-kind",
         choices=("copula", "frailty"),
         default="frailty",
-        help="Semi-synthetic dependence construction used when the selected --dataset is semi-synthetic (SEMI_*).",
+        help="Dependence construction used when the selected --dataset is synthetic (SYNTH) or semi-synthetic (SEMI_*).",
     )
     parser.add_argument(
         "--copula-type",
         choices=("gaussian", "clayton", "gumbel", "frank"),
         default="clayton",
-        help="Type of copula to use for semi-synthetic dependence construction.",
+        help="Type of copula to use for synthetic or semi-synthetic copula dependence construction.",
     )
     parser.add_argument(
         "--feature-kind",
@@ -169,13 +181,36 @@ def main() -> None:
         default="discrete",
         help=(
             "Kind of features to use for fully synthetic data generation; "
-            "this only affects --dataset SYNTH when --dependency-kind frailty "
-            "and is ignored otherwise."
+            "this affects --dataset SYNTH for both copula and frailty dependence."
+        ),
+    )
+    parser.add_argument(
+        "--theta",
+        type=float,
+        default=3.0,
+        help=(
+            "Theta parameter controlling the strength of dependence for copula-based data generation; "
+            "ignored for frailty-based generation."
+        ),
+    )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=4.0,
+        help=(
+            "Frailty dependence strength for --dataset SYNTH when --dependency-kind frailty; "
+            "the same value is used for alpha_E and alpha_C."
         ),
     )
     parser.add_argument("--n-trials", type=int, default=10, help="Number of hyperparameter combinations to sample.")
     parser.add_argument("--seed", type=int, default=2026, help="Seed for hyperparameter sampling and DGP.")
+    parser.add_argument("--drop-cov", type=int, default=0, help="Number of covariates to drop when generating semi-synthetic data.")
     args = parser.parse_args()
+
+    if args.dataset == "SYNTH" and args.dependency_kind == "copula" and not np.isfinite(args.theta):
+        parser.error("--theta must be finite for synthetic copula data.")
+    if args.dataset == "SYNTH" and args.dependency_kind == "frailty" and not np.isfinite(args.alpha):
+        parser.error("--alpha must be finite for synthetic frailty data.")
 
     dataset_label, config_path, raw_df = resolve_dataset(
         dataset=args.dataset,
@@ -183,6 +218,9 @@ def main() -> None:
         copula_type=args.copula_type,
         feature_kind=args.feature_kind,
         seed=args.seed,
+        theta=args.theta,
+        alpha=args.alpha,
+        drop_cov=args.drop_cov,
     )
 
     with config_path.open("r", encoding="utf-8") as f:
@@ -190,7 +228,7 @@ def main() -> None:
 
     sampled_hyperparameters = sample_hyperparameters(config=config, n_trials=args.n_trials, seed=args.seed)
 
-    df, features_all = prepare_experiment_dataset(
+    df, features_all, time_col, event_col = prepare_experiment_dataset(
         raw_df=raw_df,
         config=config,
         dataset=args.dataset,
@@ -233,17 +271,17 @@ def main() -> None:
             records.append(row)
             continue
 
-        run_df = df[["time", "event"] + features_select].copy()
+        run_df = df[[time_col, event_col] + features_select].copy()
         try:
             test_details = detect_dependent_censoring(
                 run_df,
                 quantiles=hyperparameters["quantiles"],
+                t_col=time_col,
+                e_col=event_col,
+                x_cols=features_select,
                 B=hyperparameters["B"],
                 seed=hyperparameters["seed"],
                 min_stratum_size=hyperparameters["min_stratum_size"],
-                t_col="time",
-                e_col="event",
-                x_cols=features_select,
                 return_details=True,
             )
             row["p_value"] = test_details["final_p_value"]

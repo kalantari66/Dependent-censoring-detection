@@ -52,13 +52,16 @@ Future PyPI target package name: `cmi`.
 
 ---
 
-# Required Dataset Format
+# Default Dataset Format
 
-Your dataset must contain:
+By default, `detect_dependent_censoring()` expects:
 
 - `observed_time` → positive survival/censoring time  
 - `event_indicator` → 0 (censored) or 1 (event)  
 - All other columns are automatically treated as covariates (strata variables)
+
+If your dataset uses different column names such as `time` and `event`, pass them explicitly with
+`t_col="time"` and `e_col="event"`.
 
 Example structure:
 
@@ -102,7 +105,7 @@ from cmi import detect_dependent_censoring
 from data import dgp
 
 df = dgp(
-    kind="copula",
+    kind="copula_discrete",
     n_subjects=500,
     n_features=3,
     copula="clayton",
@@ -117,7 +120,9 @@ p_global = detect_dependent_censoring(
     B=200,
     seed=123,
     min_stratum_size=30,
-    variance_threshold=1e-3
+    variance_threshold=1e-3,
+    t_col="time",
+    e_col="event",
 )
 
 print("Global p-value:", p_global)
@@ -143,7 +148,12 @@ detect_dependent_censoring(
     B=500,
     seed=123,
     min_stratum_size=30,
-    variance_threshold=1e-9
+    variance_threshold=1e-9,
+    t_col="observed_time",
+    e_col="event_indicator",
+    x_cols=None,
+    return_details=False,
+    verbose=False,
 )
 ```
 
@@ -157,6 +167,11 @@ detect_dependent_censoring(
 | `seed` | Random seed |
 | `min_stratum_size` | Minimum size per covariate stratum |
 | `variance_threshold` | Minimum null variance for stability |
+| `t_col` | Time column name; defaults to `observed_time` |
+| `e_col` | Event indicator column name; defaults to `event_indicator` |
+| `x_cols` | Optional covariate columns to stratify on |
+| `return_details` | Return the full results dictionary instead of just the global p-value |
+| `verbose` | Print progress and diagnostic messages |
 
 ### Output
 
@@ -174,7 +189,7 @@ float  → Global p-value
 from data import dgp
 
 dgp(
-    kind="copula",
+    kind="copula_discrete",
     n_subjects=1000,
     n_features=3,
     seed=42,
@@ -184,7 +199,8 @@ dgp(
 
 Available generator types:
 
-- `"copula"`  
+- `"copula_discrete"`  
+- `"copula_continuous"`  
 - `"frailty_discrete"`  
 - `"frailty_continuous"`  
 
