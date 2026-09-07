@@ -17,7 +17,8 @@ from cmi.null_sampling import prepare_null_nonparametric
 from data import dgp
 from experiments.run_exp import main, prepare_experiment_dataset, resolve_dataset
 
-CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "real_exp.json"
+CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
+CONFIG_PATH = CONFIG_DIR / "synth_exp.json"
 
 
 class SyntheticExperimentTests(unittest.TestCase):
@@ -73,7 +74,7 @@ class SyntheticExperimentTests(unittest.TestCase):
                 root = Path(directory)
                 (root / "config").mkdir()
                 config["synthetic"]["n_features"] = [n_features]
-                (root / "config" / "real_exp.json").write_text(json.dumps(config))
+                (root / "config" / "synth_exp.json").write_text(json.dumps(config))
                 try:
                     os.chdir(root)
                     with (
@@ -105,6 +106,62 @@ class SyntheticExperimentTests(unittest.TestCase):
                 self.assertTrue(np.isfinite(row["p_value"]))
                 self.assertTrue(0 <= row["p_value"] <= 1)
 
+    def test_dataset_uses_its_own_config(self) -> None:
+        """Use separate real and synthetic settings through sampling and detection."""
+        original_cwd = Path.cwd()
+        frame = pd.DataFrame({"time": np.arange(1, 21), "event": [1, 0] * 10, "x0": [0] * 20})
+        frame.attrs["kendall_tau"] = 0.5
+        configs = {name: json.loads((CONFIG_DIR / name).read_text()) for name in ("real_exp.json", "synth_exp.json")}
+        self.assertEqual(configs["real_exp.json"]["bootstrap_samples"], [100, 200, 300, 400])
+        self.assertEqual(configs["synth_exp.json"]["bootstrap_samples"], [200, 300, 400, 500])
+        self.assertNotIn("synthetic", configs["real_exp.json"])
+        # Disjoint choices reveal the wrong config even with only two trials.
+        configs["real_exp.json"]["bootstrap_samples"] = [100]
+        configs["synth_exp.json"]["bootstrap_samples"] = [500]
+        details = {
+            "final_p_value": 0.5,
+            "observed_fisher_stat": 1.0,
+            "per_stratum_p_values": {"0": 0.5},
+            "excluded_strata": [],
+        }
+        for dataset, config_name, expected_bootstraps in (
+            ("GBSG2", "real_exp.json", 100),
+            ("SYNTH", "synth_exp.json", 500),
+            ("SEMI_GBSG2", "synth_exp.json", 500),
+        ):
+            with self.subTest(dataset=dataset), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "config").mkdir()
+                for name, config in configs.items():
+                    (root / "config" / name).write_text(json.dumps(config))
+                try:
+                    os.chdir(root)
+                    with (
+                        patch.object(sys, "argv", ["run_exp", "--dataset", dataset, "--n-trials", "2"]),
+                        patch("experiments.run_exp.resolve_dataset", return_value=(dataset, frame)) as resolve,
+                        patch(
+                            "experiments.run_exp.prepare_experiment_dataset",
+                            return_value=(frame, ["x0"], "time", "event"),
+                        ) as prepare,
+                        patch("experiments.run_exp.detect_dependent_censoring", return_value=details) as detect,
+                    ):
+                        main()
+                finally:
+                    os.chdir(original_cwd)
+                results = pd.read_csv(next((root / "results").glob("*.csv")))
+                self.assertEqual(len(results), 2)
+                self.assertTrue((results["status"] == "success").all())
+                self.assertTrue((results["B"] == expected_bootstraps).all())
+                self.assertEqual(prepare.call_args.kwargs["config"], configs[config_name])
+                self.assertEqual(detect.call_count, 2)
+                for call in detect.call_args_list:
+                    self.assertEqual(call.kwargs["B"], expected_bootstraps)
+                self.assertEqual(resolve.call_count, 2 if dataset == "SYNTH" else 1)
+                if dataset == "SYNTH":
+                    for call in resolve.call_args_list:
+                        self.assertEqual(call.kwargs["n_samples"], 2000)
+                        self.assertIn(call.kwargs["n_features"], [3, 4, 5])
+
     def test_tau_output_when_detection_fails(self) -> None:
         """Keep synthetic metadata on error rows and leave real-data tau undefined."""
         original_cwd = Path.cwd()
@@ -114,7 +171,8 @@ class SyntheticExperimentTests(unittest.TestCase):
             with self.subTest(dataset=dataset), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 (root / "config").mkdir()
-                (root / "config" / "real_exp.json").write_text(CONFIG_PATH.read_text())
+                for config_name in ("real_exp.json", "synth_exp.json"):
+                    (root / "config" / config_name).write_text((CONFIG_DIR / config_name).read_text())
                 try:
                     os.chdir(root)
                     with (

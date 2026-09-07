@@ -221,19 +221,21 @@ def main() -> None:
     if args.dataset == "SYNTH" and args.dependency_kind == "frailty" and not np.isfinite(args.alpha):
         parser.error("--alpha must be finite for synthetic frailty data.")
 
-    with Path("config/real_exp.json").open("r", encoding="utf-8") as f:
+    config_name = (
+        "synth_exp.json" if args.dataset == "SYNTH" or args.dataset in SEMI_SYNTH_DATASETS else "real_exp.json"
+    )
+    with (Path("config") / config_name).open("r", encoding="utf-8") as f:
         config = json.load(f)
 
     sampled_hyperparameters = sample_hyperparameters(config=config, n_trials=args.n_trials, seed=args.seed)
     feature_rng = np.random.default_rng(args.seed)
-    n_samples = config["synthetic"]["n_samples"]
-    feature_choices = config["synthetic"]["n_features"]
+    n_samples = config["synthetic"]["n_samples"] if args.dataset == "SYNTH" else 0
 
     # TODO: add parallel processing
     records: List[Dict[str, Any]] = []
     for run_id, hyperparameters in enumerate(tqdm(sampled_hyperparameters, desc=args.dataset), start=1):
         if args.dataset == "SYNTH" or run_id == 1:
-            n_features = int(feature_rng.choice(feature_choices)) if args.dataset == "SYNTH" else 0
+            n_features = int(feature_rng.choice(config["synthetic"]["n_features"])) if args.dataset == "SYNTH" else 0
             dataset_label, raw_df = resolve_dataset(
                 dataset=args.dataset,
                 dependency_kind=args.dependency_kind,

@@ -74,8 +74,14 @@ Example structure:
 
 # Usage
 
-Synthetic experiment trials use `synthetic.n_samples` (2,000) and sample
-`synthetic.n_features` from `[3, 4, 5]` in `config/real_exp.json`. Run them with:
+The experiment runner selects its configuration by dataset:
+
+- Real datasets use `config/real_exp.json`, with bootstrap samples `[100, 200, 300, 400]`.
+- `SYNTH` and `SEMI_*` datasets use `config/synth_exp.json`, with bootstrap samples `[200, 300, 400, 500]`.
+
+For fully synthetic trials, `synthetic.n_samples` is 2,000 and `synthetic.n_features`
+is sampled from `[3, 4, 5]`. Semi-synthetic datasets use the source dataset's covariates
+and sample count. Run fully synthetic experiments with:
 
 ```bash
 python -m experiments.run_exp --dataset SYNTH --n-trials 10 --seed 2026
