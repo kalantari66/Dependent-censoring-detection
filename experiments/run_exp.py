@@ -15,11 +15,7 @@ REAL_DATASETS = {"METABRIC", "NACD", "GBSG2", "NWTCO", "NPC", "AIDS", "HFCR", "l
 SEMI_SYNTH_DATASETS = {f"SEMI_{data}" for data in REAL_DATASETS}
 
 
-def select_feature_by_strata_size(
-        df: pd.DataFrame, 
-        x_cols: List[str], 
-        min_size: int
-) -> Tuple[List[str], int]:
+def select_feature_by_strata_size(df: pd.DataFrame, x_cols: List[str], min_size: int) -> Tuple[List[str], int]:
     """
     Select features based on the number of strata that meet the minimum size requirement.
     Iteratively drop the most complex feature (based on cardinality) until at least one stratum
@@ -35,11 +31,7 @@ def select_feature_by_strata_size(
     return [x_cols[0]], (group_sizes >= min_size).sum()
 
 
-def sample_hyperparameters(
-        config: Dict[str, Any], 
-        n_trials: int, 
-        seed: int
-) -> List[Dict[str, Any]]:
+def sample_hyperparameters(config: Dict[str, Any], n_trials: int, seed: int) -> List[Dict[str, Any]]:
     """Sample hyperparameters for the dependent-censoring detection method based on the provided configuration."""
     rng = np.random.default_rng(seed)
 
@@ -83,18 +75,34 @@ def resolve_dataset(
     seed: int,
     theta: float,
     alpha: float,
+    n_samples: int,
+    n_features: int,
     drop_cov: int = 0,
-) -> tuple[str, Path, pd.DataFrame]:
-    """Resolve the experiment dataset and return its label, config, and frame."""
-    # TODO: right now all the experiments use the same config file.
-    config_path = Path("config/real_exp.json")
+) -> tuple[str, pd.DataFrame]:
+    """Resolve an experiment dataset.
+
+    Args:
+        dataset: Real, semi-synthetic, or SYNTH dataset name.
+        dependency_kind: Synthetic dependence mechanism.
+        copula_type: Copula family for copula generation.
+        feature_kind: Discrete or continuous synthetic covariates.
+        seed: Data generation seed.
+        theta: Copula dependence strength.
+        alpha: Shared frailty dependence strength.
+        n_samples: Number of subjects to generate for SYNTH.
+        n_features: Number of covariates to generate for SYNTH.
+        drop_cov: Number of covariates to drop for semi-synthetic data.
+
+    Returns:
+        The dataset label and raw data frame.
+    """
 
     if dataset == "SYNTH":
         kind = f"{dependency_kind}_{feature_kind}"
         raw_df = dgp(
             kind=kind,
-            n_subjects=1000,
-            n_features=4,
+            n_subjects=n_samples,
+            n_features=n_features,
             copula=copula_type,
             seed=seed,
             theta=theta,
@@ -111,7 +119,7 @@ def resolve_dataset(
         if dependency_kind == "copula":
             dataset_label += f"_{copula_type}_theta{theta}"
         raw_df = semiDGP(
-            dataset=dataset.split("_", 1)[1], # extract the real dataset name from the SEMI_ prefix
+            dataset=dataset.split("_", 1)[1],  # extract the real dataset name from the SEMI_ prefix
             kind=dependency_kind,
             model="coxph",
             seed=seed,
@@ -124,8 +132,8 @@ def resolve_dataset(
         dataset_label = f"REAL_{dataset}"
     else:
         raise ValueError(f"Unsupported dataset: {dataset}")
-    
-    return dataset_label, config_path, raw_df
+
+    return dataset_label, raw_df
 
 
 def prepare_experiment_dataset(
@@ -141,14 +149,11 @@ def prepare_experiment_dataset(
             max_features=config["preprocessing"]["max_selected_features"],
             event_col="event",
             time_col="time",
-            feature_exclude=None
+            feature_exclude=None,
         )
         return df, features_all, "time", "event"
 
-    feature_cols = [
-        col for col in raw_df.columns
-        if col.startswith("x") and not col.endswith("_continuous")
-    ]
+    feature_cols = [col for col in raw_df.columns if col.startswith("x") and not col.endswith("_continuous")]
     if not feature_cols:
         raise ValueError("Synthetic dataset does not include usable strata columns.")
     df = raw_df[["time", "event"] + feature_cols].copy()
@@ -159,7 +164,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run dependent-censoring detection.")
     parser.add_argument(
         "--dataset",
-        type=str, 
+        type=str,
         default="SEMI_GBSG2",
         help="Dataset name, including real, semi-synthetic, and synthetic options.",
     )
@@ -204,44 +209,54 @@ def main() -> None:
     )
     parser.add_argument("--n-trials", type=int, default=10, help="Number of hyperparameter combinations to sample.")
     parser.add_argument("--seed", type=int, default=2026, help="Seed for hyperparameter sampling and DGP.")
-    parser.add_argument("--drop-cov", type=int, default=0, help="Number of covariates to drop when generating semi-synthetic data.")
+    parser.add_argument(
+        "--drop-cov", type=int, default=0, help="Number of covariates to drop when generating semi-synthetic data."
+    )
     args = parser.parse_args()
 
+    if args.n_trials < 1:
+        parser.error("--n-trials must be positive.")
     if args.dataset == "SYNTH" and args.dependency_kind == "copula" and not np.isfinite(args.theta):
         parser.error("--theta must be finite for synthetic copula data.")
     if args.dataset == "SYNTH" and args.dependency_kind == "frailty" and not np.isfinite(args.alpha):
         parser.error("--alpha must be finite for synthetic frailty data.")
 
-    dataset_label, config_path, raw_df = resolve_dataset(
-        dataset=args.dataset,
-        dependency_kind=args.dependency_kind,
-        copula_type=args.copula_type,
-        feature_kind=args.feature_kind,
-        seed=args.seed,
-        theta=args.theta,
-        alpha=args.alpha,
-        drop_cov=args.drop_cov,
-    )
-
-    with config_path.open("r", encoding="utf-8") as f:
+    with Path("config/real_exp.json").open("r", encoding="utf-8") as f:
         config = json.load(f)
 
     sampled_hyperparameters = sample_hyperparameters(config=config, n_trials=args.n_trials, seed=args.seed)
+    feature_rng = np.random.default_rng(args.seed)
+    n_samples = config["synthetic"]["n_samples"]
+    feature_choices = config["synthetic"]["n_features"]
 
-    df, features_all, time_col, event_col = prepare_experiment_dataset(
-        raw_df=raw_df,
-        config=config,
-        dataset=args.dataset,
-    )
-
-    msg = f"Running {args.n_trials} trials on {dataset_label} with {len(df)} samples and {len(features_all)} covariates."
     # TODO: add parallel processing
     records: List[Dict[str, Any]] = []
-    for run_id, hyperparameters in enumerate(tqdm(sampled_hyperparameters, desc=msg), start=1):
+    for run_id, hyperparameters in enumerate(tqdm(sampled_hyperparameters, desc=args.dataset), start=1):
+        if args.dataset == "SYNTH" or run_id == 1:
+            n_features = int(feature_rng.choice(feature_choices)) if args.dataset == "SYNTH" else 0
+            dataset_label, raw_df = resolve_dataset(
+                dataset=args.dataset,
+                dependency_kind=args.dependency_kind,
+                copula_type=args.copula_type,
+                feature_kind=args.feature_kind,
+                seed=args.seed,
+                theta=args.theta,
+                alpha=args.alpha,
+                n_samples=n_samples,
+                n_features=n_features,
+                drop_cov=args.drop_cov,
+            )
+            df, features_all, time_col, event_col = prepare_experiment_dataset(
+                raw_df=raw_df,
+                config=config,
+                dataset=args.dataset,
+            )
+
         row: Dict[str, Any] = {
             "run_id": run_id,
             "dataset": dataset_label,
             "n_samples": len(df),
+            "n_features": len(features_all),
             "n_quantiles": hyperparameters["n_quantiles"],
             "quantiles": json.dumps(hyperparameters["quantiles"]),
             "B": hyperparameters["B"],
@@ -290,12 +305,14 @@ def main() -> None:
             # Sanity check: the number of per-stratum p-values should match the number of valid strata (after excluding those that don't meet min size)
             excluded = test_details["excluded_strata"]
             per_stratum = test_details["per_stratum_p_values"]
-            assert len(per_stratum) + len(excluded) == n_valid_strata, "Number of per-stratum p-values plus excluded strata should equal number of valid strata."
+            assert (
+                len(per_stratum) + len(excluded) == n_valid_strata
+            ), "Number of per-stratum p-values plus excluded strata should equal number of valid strata."
             row["n_strata"] = len(per_stratum)
             row["n_excluded_strata"] = len(excluded)
-            
+
             row["per_stratum_p_values"] = json.dumps(per_stratum) if isinstance(per_stratum, dict) else ""
-            
+
             if pd.isna(row["p_value"]):
                 row["status"] = "error"
                 row["error"] = "Invalid p-value."

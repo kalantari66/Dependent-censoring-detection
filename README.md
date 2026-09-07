@@ -74,6 +74,16 @@ Example structure:
 
 # Usage
 
+Synthetic experiment trials use `synthetic.n_samples` (2,000) and sample
+`synthetic.n_features` from `[3, 4, 5]` in `config/real_exp.json`. Run them with:
+
+```bash
+python -m experiments.run_exp --dataset SYNTH --n-trials 10 --seed 2026
+```
+
+Each covariate count generates a dataset using the run seed. Results record
+`n_samples`, `n_features` before stratum-size selection, and `ncov_used` after selection.
+
 ## 1️⃣ Real Data (CSV Input)
 
 ```python
