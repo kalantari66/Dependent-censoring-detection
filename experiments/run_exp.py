@@ -257,6 +257,7 @@ def main() -> None:
             "dataset": dataset_label,
             "n_samples": len(df),
             "n_features": len(features_all),
+            "kendall_tau": raw_df.attrs["kendall_tau"] if args.dataset == "SYNTH" else np.nan,
             "n_quantiles": hyperparameters["n_quantiles"],
             "quantiles": json.dumps(hyperparameters["quantiles"]),
             "B": hyperparameters["B"],

@@ -2,7 +2,7 @@ from typing import Any, Dict, Literal, Optional
 
 import numpy as np
 import pandas as pd
-from scipy.stats import levy_stable, norm
+from scipy.stats import kendalltau, levy_stable, norm
 
 
 def dgp(
@@ -27,6 +27,9 @@ def dgp(
       - time
       - event
       - x0..x{p-1} strata covariates
+
+    The DataFrame attrs include ``kendall_tau``, the empirical marginal Kendall
+    tau-b between the true event and censoring times before observation.
     """
     if kind == "copula_discrete":
         return generate_direct_dependence_data(
@@ -177,6 +180,7 @@ def generate_direct_dependence_data(
     df = pd.DataFrame(X, columns=[f"x{i}" for i in range(n_features)])
     df["time"] = observed_time
     df["event"] = event_indicator
+    df.attrs["kendall_tau"] = float(kendalltau(T_E, T_C).statistic)
     return df
 
 
@@ -297,6 +301,7 @@ def generate_copula_continuous_features(
     df = pd.DataFrame({**binned_cols, **continuous_cols})
     df['time']   = observed_time
     df['event'] = event_indicator
+    df.attrs["kendall_tau"] = float(kendalltau(T_E, T_C).statistic)
 
     return df
 
@@ -342,6 +347,7 @@ def generate_dependent_via_frailty_mod(
     df = pd.DataFrame(X, columns=[f"x{i}" for i in range(n_features)])
     df["time"] = T
     df["event"] = Delta
+    df.attrs["kendall_tau"] = float(kendalltau(E, C).statistic)
     return df
 
 
@@ -441,4 +447,5 @@ def generate_dependent_continuous_features(
     )
     df["time"] = T
     df["event"] = Delta
+    df.attrs["kendall_tau"] = float(kendalltau(E, C).statistic)
     return df

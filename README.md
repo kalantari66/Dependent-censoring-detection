@@ -83,6 +83,10 @@ python -m experiments.run_exp --dataset SYNTH --n-trials 10 --seed 2026
 
 Each covariate count generates a dataset using the run seed. Results record
 `n_samples`, `n_features` before stratum-size selection, and `ncov_used` after selection.
+The `kendall_tau` column reports empirical marginal Kendall tau-b between the true
+event and censoring times for each fully synthetic dataset, before censoring is applied.
+It is computed over all generated subjects without conditioning on covariates and
+is blank for real and semi-synthetic runs.
 
 ## 1️⃣ Real Data (CSV Input)
 
