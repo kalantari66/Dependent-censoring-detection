@@ -1,7 +1,7 @@
 {
   "n_quantiles": [3, 5, 7, 10],
-  "bootstrap_samples": [50, 100, 200, 500],
-  "min_stratum_size": [10, 20, 30, 40],
+  "bootstrap_samples": [100, 200, 300, 400],
+  "min_stratum_size": [20],
   "seed_range": [0, 1000000],
   "quantile_range": [0.15, 0.85],
   "preprocessing": {
