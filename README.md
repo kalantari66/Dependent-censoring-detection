@@ -52,13 +52,16 @@ Future PyPI target package name: `cmi`.
 
 ---
 
-# Required Dataset Format
+# Default Dataset Format
 
-Your dataset must contain:
+By default, `detect_dependent_censoring()` expects:
 
 - `observed_time` → positive survival/censoring time  
 - `event_indicator` → 0 (censored) or 1 (event)  
 - All other columns are automatically treated as covariates (strata variables)
+
+If your dataset uses different column names such as `time` and `event`, pass them explicitly with
+`t_col="time"` and `e_col="event"`.
 
 Example structure:
 
@@ -70,6 +73,26 @@ Example structure:
 ---
 
 # Usage
+
+The experiment runner selects its configuration by dataset:
+
+- Real datasets use `config/real_exp.json`, with bootstrap samples `[100, 200, 300, 400]`.
+- `SYNTH` and `SEMI_*` datasets use `config/synth_exp.json`, with bootstrap samples `[200, 300, 400, 500]`.
+
+For fully synthetic trials, `synthetic.n_samples` is 2,000 and `synthetic.n_features`
+is sampled from `[3, 4, 5]`. Semi-synthetic datasets use the source dataset's covariates
+and sample count. Run fully synthetic experiments with:
+
+```bash
+python -m experiments.run_exp --dataset SYNTH --n-trials 10 --seed 2026
+```
+
+Each covariate count generates a dataset using the run seed. Results record
+`n_samples`, `n_features` before stratum-size selection, and `ncov_used` after selection.
+The `kendall_tau` column reports empirical marginal Kendall tau-b between the true
+event and censoring times for each fully synthetic dataset, before censoring is applied.
+It is computed over all generated subjects without conditioning on covariates and
+is blank for real and semi-synthetic runs.
 
 ## 1️⃣ Real Data (CSV Input)
 
@@ -102,7 +125,7 @@ from cmi import detect_dependent_censoring
 from data import dgp
 
 df = dgp(
-    kind="copula",
+    kind="copula_discrete",
     n_subjects=500,
     n_features=3,
     copula="clayton",
@@ -117,7 +140,9 @@ p_global = detect_dependent_censoring(
     B=200,
     seed=123,
     min_stratum_size=30,
-    variance_threshold=1e-3
+    variance_threshold=1e-3,
+    t_col="time",
+    e_col="event",
 )
 
 print("Global p-value:", p_global)
@@ -143,7 +168,12 @@ detect_dependent_censoring(
     B=500,
     seed=123,
     min_stratum_size=30,
-    variance_threshold=1e-9
+    variance_threshold=1e-9,
+    t_col="observed_time",
+    e_col="event_indicator",
+    x_cols=None,
+    return_details=False,
+    verbose=False,
 )
 ```
 
@@ -157,6 +187,11 @@ detect_dependent_censoring(
 | `seed` | Random seed |
 | `min_stratum_size` | Minimum size per covariate stratum |
 | `variance_threshold` | Minimum null variance for stability |
+| `t_col` | Time column name; defaults to `observed_time` |
+| `e_col` | Event indicator column name; defaults to `event_indicator` |
+| `x_cols` | Optional covariate columns to stratify on |
+| `return_details` | Return the full results dictionary instead of just the global p-value |
+| `verbose` | Print progress and diagnostic messages |
 
 ### Output
 
@@ -174,7 +209,7 @@ float  → Global p-value
 from data import dgp
 
 dgp(
-    kind="copula",
+    kind="copula_discrete",
     n_subjects=1000,
     n_features=3,
     seed=42,
@@ -184,7 +219,8 @@ dgp(
 
 Available generator types:
 
-- `"copula"`  
+- `"copula_discrete"`  
+- `"copula_continuous"`  
 - `"frailty_discrete"`  
 - `"frailty_continuous"`  
 
